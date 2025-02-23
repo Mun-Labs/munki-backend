@@ -1,0 +1,17 @@
+[package]
+name = "rest-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+common = { path = "../common" }
+
+futures = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+envconfig = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing = { workspace = true }
+http-body-util = "0.1.0"
