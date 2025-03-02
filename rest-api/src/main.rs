@@ -4,6 +4,8 @@ use axum::middleware;
 pub mod app;
 pub mod config;
 pub mod token;
+pub mod thirdparty;
+pub mod wallet;
 
 #[tokio::main]
 async fn main() {
