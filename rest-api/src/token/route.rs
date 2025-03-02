@@ -14,9 +14,3 @@ async fn health_check() -> Result<Json<HealthyResponse>, (StatusCode, String)> {
         message: "Healthy".into(),
     }))
 }
-
-async fn search_token() -> Result<Json<HealthyResponse>, (StatusCode, String)> {
-    Ok(Json(HealthyResponse {
-        message: "Healthy".into(),
-    }))
-}
