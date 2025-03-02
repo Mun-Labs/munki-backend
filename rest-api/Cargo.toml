@@ -16,3 +16,4 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing = { workspace = true }
 http-body-util = "0.1.0"
 reqwest = { workspace = true }
+sqlx = { version = "0.8.3", features = ["postgres", "runtime-tokio"] }

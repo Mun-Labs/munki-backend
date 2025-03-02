@@ -10,4 +10,7 @@ pub struct Config {
 pub struct DatabaseConfig {
     #[envconfig(from = "DATABASE_URL")]
     pub database_url: String,
+
+    #[envconfig(from = "RUN_MIGRATION")]
+    pub run_miration: bool,
 }

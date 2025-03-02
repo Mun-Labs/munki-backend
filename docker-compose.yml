@@ -2,11 +2,11 @@ version: "3.8"
 
 services:
   timescaledb:
-    image: timescale/timescaledb:latest-pg14
+    image: timescale/timescaledb:latest-pg16
     container_name: timescaledb
     environment:
-      POSTGRES_USER: example_user
-      POSTGRES_PASSWORD: example_pass
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: example_db
     ports:
       - "5432:5432"
