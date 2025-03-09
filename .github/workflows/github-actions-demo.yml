@@ -48,4 +48,4 @@ jobs:
         procfile: "web: ./rest-api"
         # buildpack is like environment used to run the app
         buildpack: "https://github.com/ph3nx/heroku-binary-buildpack.git"
-        dontuseforce: "1"
+        dontuseforce: "0"
