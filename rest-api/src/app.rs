@@ -8,8 +8,10 @@ use axum::{
 use http_body_util::BodyExt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-#[derive(Debug, Default)]
-pub struct AppState {}
+#[derive(Debug, Default, Clone)]
+pub struct AppState {
+    pub version: i32,
+}
 
 impl AppState {
     pub fn new() -> Self {

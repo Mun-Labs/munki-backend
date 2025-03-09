@@ -1,0 +1,12 @@
+### GET request to example server
+GET {{url}}/api/v2/price?list_addresss=1&list_addresss=1
+Accept: application/json
+###
+
+### Example response
+HTTP/1.1 200 OK
+Content-Type: application/json
+{
+  "message": "Hello, world!"
+}
+###
