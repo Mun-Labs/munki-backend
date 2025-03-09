@@ -40,6 +40,7 @@ jobs:
         heroku_app_name: "munki-web-app"
         # email from which the app is uploaded
         heroku_email: "boss@munki.ai"
+        branch: "main"
 
         # app directory
         appdir: "./app"
