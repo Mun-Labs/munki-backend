@@ -1,6 +1,7 @@
 use axum::{http::StatusCode, routing::get, Json, Router};
+use crate::app::AppState;
 
-pub fn router() -> Router {
+pub fn router() -> Router<AppState> {
     Router::new().route("/health", get(health_check))
 }
 #[derive(serde::Serialize)]
