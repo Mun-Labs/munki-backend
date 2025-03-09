@@ -28,12 +28,11 @@ jobs:
     # put the app in it
     - name: copy
       run: mv ./target/release/rest-api ./app/rest-api
-    - name: Install Heroku CLI
-      run: curl https://cli-assets.heroku.com/install-ubuntu.sh | sh
-    - name: Verify Heroku CLI Installation
-      run: heroku --version
+    - name: Install Heroku CLI # <- IMPORTANT!!! Make sure the cli is installed before using the action
+      run: |
+        curl https://cli-assets.heroku.com/install.sh | sh
       # heroku deployment
-    - uses: akhileshns/heroku-deploy@v3.12.12
+    - uses: akhileshns/heroku-deploy@v3.14.15 # This is the action
       with:
         # key from repository secrets
         heroku_api_key: ${{secrets.HEROKU_API_KEY}}
