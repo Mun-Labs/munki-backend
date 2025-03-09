@@ -1,6 +1,6 @@
 use app::{print_request_response, AppState};
+use axum::routing::get;
 use axum::{middleware, Router};
-use sqlx::{Pool, Postgres};
 
 pub mod app;
 pub mod config;
@@ -24,13 +24,18 @@ async fn main() {
     //
 
     let app_state = AppState::new();
+    let r = Router::new();
 
     let router = Router::new()
-        .with_state(app_state);
-    let router = router.nest("/api/v1", token::router().merge(price::route()));
-    // .layer(middleware::from_fn(print_request_response));
+        .route("/price/{address}", get(price::route::get_price))
+        .with_state(app_state)
+        .layer(middleware::from_fn(print_request_response));
+
+    let app = r.nest("/api/v1", router);
+
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
         .await
         .expect("should create listener");
-    axum::serve(listener, router).await.unwrap();
+
+    axum::serve(listener, app).await.unwrap();
 }

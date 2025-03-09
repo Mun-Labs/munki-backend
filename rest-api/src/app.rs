@@ -1,3 +1,4 @@
+use crate::thirdparty::BirdEyeClient;
 use axum::{
     body::{Body, Bytes},
     extract::Request,
@@ -11,12 +12,20 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[derive(Debug, Default, Clone)]
 pub struct AppState {
     pub version: i32,
+    pub bird_eye_client: BirdEyeClient,
 }
+// const NUM_TASKS: usize = 16;
+// const NUM_KEYS_PER_TASK: usize = 64;
+const BIRD_EYE_BASE_URL: &str = "https://api.birdeye.com";
+const BIRD_EYE_API_KEY: &str = "";
 
 impl AppState {
     pub fn new() -> Self {
         init_tracing();
-        Default::default()
+        Self {
+            version: 0,
+            bird_eye_client: BirdEyeClient::new(BIRD_EYE_BASE_URL.into(), BIRD_EYE_API_KEY.into()),
+        }
     }
 }
 

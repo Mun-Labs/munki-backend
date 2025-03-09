@@ -1,6 +1,8 @@
 pub mod route;
-pub use route::route;
 
+use serde::Serialize;
+
+#[derive(Serialize)]
 pub struct TokenPrice {
     pub token: String,
     pub price: f64,
