@@ -1,6 +1,7 @@
 use app::{print_request_response, AppState};
 use axum::routing::get;
 use axum::{middleware, Router};
+use tracing::info;
 
 pub mod app;
 pub mod config;
@@ -22,7 +23,6 @@ async fn main() {
     //     .execute(&pool)
     //     .await.unwrap();
     //
-
     let app_state = AppState::new();
     let r = Router::new();
 
@@ -37,5 +37,6 @@ async fn main() {
         .await
         .expect("should create listener");
 
+    info!("start munki server");
     axum::serve(listener, app).await.unwrap();
 }

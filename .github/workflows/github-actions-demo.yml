@@ -1,18 +1,48 @@
-name: GitHub Actions Demo
-run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
-on: [push]
+name: Rust
+# run workflow when the condition is met
+on:
+  # run when code is pushed on the `main` branch
+  push:
+    branches: [ "main" ]
+  # run when a pull request to the `main` branch
+  pull_request:
+    branches: [ "main" ]
+env:
+  CARGO_TERM_COLOR: always
 jobs:
-  Explore-GitHub-Actions:
+  # job name
+  build:
+    # os to run the job on support macOS and windows also
     runs-on: ubuntu-latest
     steps:
-      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
-      - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
-      - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
-      - name: Check out repository code
-        uses: actions/checkout@v4
-      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
-      - run: echo "🖥️ The workflow is now ready to test your code on the runner."
-      - name: List files in the repository
-        run: |
-          ls ${{ github.workspace }}
-      - run: echo "🍏 This job's status is ${{ secrets.HEROKU_API_KEY }}."
+    # this will get the code and set the git
+    - uses: actions/checkout@v4
+    # run the build
+    - name: Build
+      # using cargo to build
+      run: cargo build --release
+    # for deployment
+    - name: make dir
+    # create a directory
+      run: mkdir app
+    # put the app in it
+    - name: copy
+      run: mv ./target/release/rest-api ./app/rest-api
+
+      # heroku deployment
+    - uses: akhileshns/heroku-deploy@v3.12.12
+      with:
+        # key from repository secrets
+        heroku_api_key: ${{secrets.HEROKU_API_KEY}}
+        # name of the Heroku app
+        heroku_app_name: "munki-web-app"
+        # email from which the app is uploaded
+        heroku_email: "boss@munki.ai"
+
+        # app directory
+        appdir: "./app"
+
+        # start command
+        procfile: "web: ./rest-api"
+        # buildpack is like environment used to run the app
+        buildpack: "https://github.com/ph3nx/heroku-binary-buildpack.git"
