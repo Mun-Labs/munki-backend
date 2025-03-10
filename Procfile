@@ -1,1 +1,1 @@
-procfile: "web: ./target/release/rest-api"
+procfile: web: ./target/release/rest-api
