@@ -1,6 +1,7 @@
 use app::{print_request_response, AppState};
 use axum::routing::get;
 use axum::{middleware, Router};
+use sqlx::{Pool, Postgres};
 use std::env;
 use tracing::info;
 
@@ -14,10 +15,9 @@ mod fearandgreed;
 
 #[tokio::main]
 async fn main() {
-    // let database_url = "postgres://postgres:postgres@localhost/example_db";
-    //
-    // // 2) Create a connection pool
-    // let pool = Pool::<Postgres>::connect(database_url).await.unwrap();
+     let database_url = "postgres://postgres:postgres@localhost/example_db";
+     // 2) Create a connection pool
+     let pool = Pool::<Postgres>::connect(database_url).await.unwrap();
     //
     // // 3) Optionally, create the TimescaleDB extension (if you're actually using Timescale)
     // // (This might require SUPERUSER privileges depending on your setup)
@@ -25,6 +25,8 @@ async fn main() {
     //     .execute(&pool)
     //     .await.unwrap();
     //
+    //
+    sqlx::migrate!("./migrations").run(&pool).await.expect("should run successfully");
 
     let app_state = AppState::new();
     let r = Router::new();
