@@ -10,6 +10,7 @@ mod price;
 pub mod thirdparty;
 pub mod token;
 pub mod wallet;
+mod fearandgreed;
 
 #[tokio::main]
 async fn main() {
@@ -31,6 +32,7 @@ async fn main() {
     let router = Router::new()
         .route("/price/{address}", get(price::route::get_price))
         .route("/health", get(token::search::search_token))
+        .route("/fearandgreed", get(fearandgreed::route::get_fear_and_greed))
         .with_state(app_state)
         .layer(middleware::from_fn(print_request_response));
 
