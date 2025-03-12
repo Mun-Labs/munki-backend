@@ -1,3 +1,5 @@
+use crate::config::{BirdeyeConfig, DatabaseConfig};
+use crate::thirdparty::alternative_api::AlternativeClient;
 use crate::thirdparty::BirdEyeClient;
 use axum::{
     body::{Body, Bytes},
@@ -6,34 +8,44 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use envconfig::Envconfig;
 use http_body_util::BodyExt;
+use sqlx::{Pool, Postgres};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use crate::thirdparty::alternative_api::AlternativeClient;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct AppState {
     pub version: i32,
     pub bird_eye_client: BirdEyeClient,
-    pub alternative_client: AlternativeClient
+    pub alternative_client: AlternativeClient,
+    pub pool: Pool<Postgres>,
 }
-// const NUM_TASKS: usize = 16;
-// const NUM_KEYS_PER_TASK: usize = 64;
-const BIRD_EYE_BASE_URL: &str = "https://api.birdeye.com";
-const BIRD_EYE_API_KEY: &str = "";
 const ALTERNATIVE_BASE_URL: &str = "https://api.alternative.me/fng/";
 
 impl AppState {
-    pub fn new() -> Self {
+    pub async fn new() -> Self {
         init_tracing();
+        let BirdeyeConfig { api_key, base_url } = BirdeyeConfig::init_from_env().unwrap();
         Self {
             version: 0,
-            bird_eye_client: BirdEyeClient::new(BIRD_EYE_BASE_URL.into(), BIRD_EYE_API_KEY.into()),
-            alternative_client: AlternativeClient::new(
-                ALTERNATIVE_BASE_URL.into(),
-                31,
-            ),
+            bird_eye_client: BirdEyeClient::new(&base_url, &api_key),
+            alternative_client: AlternativeClient::new(ALTERNATIVE_BASE_URL.into(), 31),
+            pool: init_pg_pool().await,
         }
     }
+}
+
+async fn init_pg_pool() -> Pool<Postgres> {
+    let DatabaseConfig { database_url, .. } = DatabaseConfig::init_from_env().unwrap();
+    // 2) Create a connection pool
+    let pool = Pool::<Postgres>::connect(&database_url)
+        .await
+        .expect("should create pool");
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("should run successfully");
+    pool
 }
 
 fn init_tracing() {

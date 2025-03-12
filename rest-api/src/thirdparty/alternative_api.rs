@@ -1,6 +1,6 @@
+use crate::fearandgreed::{FearAndGreedApiResponse, FearAndGreedSdk};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use crate::fearandgreed::{FearAndGreed, FearAndGreedSdk};
 
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
@@ -38,8 +38,7 @@ pub struct Metadata {
     pub error: Option<String>,
 }
 
-#[derive(Serialize)]
-#[derive(Debug)]
+#[derive(Serialize, Debug)]
 struct QueryParams {
     limit: i8,
 }
@@ -48,16 +47,12 @@ struct QueryParams {
 impl FearAndGreedSdk for AlternativeClient {
     async fn get_fear_and_greed(
         &self,
-        limit: &i8,
-    ) -> Result<Vec<FearAndGreed>, anyhow::Error> {
+        limit: i8,
+    ) -> Result<Vec<FearAndGreedApiResponse>, anyhow::Error> {
         let client = Client::new();
         let url = &self.base_url;
 
-        let effective_limit = if *limit == 0 { &self.limit } else { limit };
-
-        let query_params = QueryParams {
-            limit: *effective_limit,
-        };
+        let query_params = QueryParams { limit };
 
         let resp = client
             .get(url)
@@ -77,16 +72,24 @@ impl FearAndGreedSdk for AlternativeClient {
         let parsed_resp: AlternativeResponse = match serde_json::from_str(&response_text) {
             Ok(resp) => resp,
             Err(e) => {
-                return Err(anyhow::anyhow!("Failed to parse response: {}\nResponse body: {}", e, response_text));
+                return Err(anyhow::anyhow!(
+                    "Failed to parse response: {}\nResponse body: {}",
+                    e,
+                    response_text
+                ));
             }
         };
 
-        let fear_and_greed_list: Vec<FearAndGreed> = parsed_resp.data.into_iter().map(|data| FearAndGreed {
-            value: data.value.parse::<i64>().unwrap(),
-            status: data.value_classification,
-            timestamp: data.timestamp.to_string(),
-            chain: "BTC".to_string(),
-        }).collect();
+        let fear_and_greed_list: Vec<FearAndGreedApiResponse> = parsed_resp
+            .data
+            .into_iter()
+            .map(|data| FearAndGreedApiResponse {
+                value: data.value,
+                status: data.value_classification,
+                timestamp: data.timestamp.to_string(),
+                chain: "BTC".to_string(),
+            })
+            .collect();
 
         if fear_and_greed_list.is_empty() {
             return Err(anyhow::anyhow!("No data in response"));
