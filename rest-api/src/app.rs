@@ -1,4 +1,5 @@
 use crate::config::{BirdeyeConfig, DatabaseConfig};
+use crate::price::{self, PriceSdk};
 use crate::thirdparty::alternative_api::AlternativeClient;
 use crate::thirdparty::BirdEyeClient;
 use axum::{
@@ -11,6 +12,8 @@ use axum::{
 use envconfig::Envconfig;
 use http_body_util::BodyExt;
 use sqlx::{Pool, Postgres};
+use tokio_cron_scheduler::{Job, JobScheduler};
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Debug, Clone)]
@@ -21,6 +24,7 @@ pub struct AppState {
     pub pool: Pool<Postgres>,
 }
 const ALTERNATIVE_BASE_URL: &str = "https://api.alternative.me/fng/";
+pub const SOL_ADDRESS: &str = "So11111111111111111111111111111111111111112";
 
 impl AppState {
     pub async fn new() -> Self {
@@ -31,6 +35,39 @@ impl AppState {
             bird_eye_client: BirdEyeClient::new(&base_url, &api_key),
             alternative_client: AlternativeClient::new(ALTERNATIVE_BASE_URL.into(), 31),
             pool: init_pg_pool().await,
+        }
+    }
+
+    pub async fn start_worker(&self) {
+        let sched = JobScheduler::new().await.unwrap();
+        let pool = self.pool.clone();
+        let client = self.bird_eye_client.clone();
+
+        sched
+            .add(
+                Job::new_async("1/20 * * * * *", move |_uuid, mut _l| {
+                    let client = client.clone();
+                    let pool = pool.clone();
+
+                    Box::pin(async move {
+                        info!("Refresh sol price");
+                        let Ok(metric) = client.get_price(SOL_ADDRESS).await else {
+                            return;
+                        };
+
+                        if let Err(err) =
+                            price::store_metric_in_db(&pool, &metric, SOL_ADDRESS).await
+                        {
+                            error!("store metric {err}");
+                        }
+                    })
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        if let Err(err) = sched.start().await {
+            error!("start cron job erro {err}");
         }
     }
 }

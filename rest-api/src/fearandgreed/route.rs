@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::app::AppState;
+use crate::app::{AppState, SOL_ADDRESS};
 use crate::fearandgreed::FearAndGreed;
 use crate::fearandgreed::{
     batch_insert_fear_and_greed, get_fear_and_greed_last_31_days, FearAndGreedSdk,
@@ -75,8 +75,7 @@ pub async fn get_fear_and_greed(
         result
     };
 
-    let sol_address = "So11111111111111111111111111111111111111112".to_string();
-    let sol_price = price::get_price(&app.pool, &app.bird_eye_client, &sol_address)
+    let sol_price = price::get_price(&app.pool, &app.bird_eye_client, SOL_ADDRESS)
         .await
         .map_err(|e| {
             error!("BirdEye get_price failed error: {e}");
@@ -89,7 +88,7 @@ pub async fn get_fear_and_greed(
         status_code: 200,
         data: FearAndGreedResponse {
             fear_and_greed: gaf,
-            token_prices: HashMap::from([(sol_address, sol_price)]),
+            token_prices: HashMap::from([(SOL_ADDRESS.to_string(), sol_price)]),
         },
     }))
 }

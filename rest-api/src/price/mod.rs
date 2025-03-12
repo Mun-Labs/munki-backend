@@ -77,7 +77,7 @@ async fn get_metric_from_db(
 }
 
 /// ✅ Store the fetched metric in the database
-async fn store_metric_in_db(
+pub async fn store_metric_in_db(
     pool: &PgPool,
     metric: &TokenData,
     token_address: &str,
