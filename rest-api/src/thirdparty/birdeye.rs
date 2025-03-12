@@ -1,6 +1,6 @@
-use crate::price::{PriceSdk, TokenPrice};
+use crate::price::PriceSdk;
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::info;
 
 #[allow(dead_code)]
@@ -20,12 +20,12 @@ impl BirdEyeClient {
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BirdEyeResponse {
+pub struct BirdEyeResponse<T> {
     pub success: bool,
-    pub data: TokenData,
+    pub data: T,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenData {
     pub price: f64,
@@ -36,15 +36,16 @@ pub struct TokenData {
     pub volume_change_percent: f64,
     pub price_change_percent: f64,
 }
+
 impl PriceSdk for BirdEyeClient {
-    async fn get_price(&self, token: &str) -> Result<TokenPrice, anyhow::Error> {
+    async fn get_price(&self, token: &str) -> Result<TokenData, anyhow::Error> {
         let client = Client::new();
-        let url = "https://public-api.birdeye.so/defi/price_volume/single";
-        info!("url: {}", url);
+        let url = format!("{}/defi/price_volume/single", self.base_url);
+        info!("price endpoint: {url}");
         let resp = client
             .get(url)
             .query(&[("address", token)])
-            .header("X-API-KEY", "ae696022a324488586603dd357130fbb")
+            .header("X-API-KEY", &self.api_key)
             .header("accept", "application/json")
             .header("x-chain", "solana")
             .send()
@@ -56,25 +57,21 @@ impl PriceSdk for BirdEyeClient {
                 resp.status()
             ));
         }
-        let resp = resp.json::<BirdEyeResponse>().await?;
-        Ok(TokenPrice {
-            token: token.to_string(),
-            price: resp.data.price,
-        })
+        let resp = resp.json::<BirdEyeResponse<TokenData>>().await?.data;
+        Ok(resp)
     }
 }
 
 #[cfg(test)]
 mod test {
     use crate::price::PriceSdk;
-    use crate::thirdparty::BirdEyeResponse;
+    use crate::thirdparty::{BirdEyeResponse, TokenData};
 
     #[tokio::test]
     async fn test_get_price_should_return_token_price() {
         let client = super::BirdEyeClient::new("https://api.birdeye.com", "api_key");
         let token_address = "0x1234567890abcdef";
         let token_price = client.get_price(token_address).await.unwrap();
-        assert_eq!(token_price.token, token_address);
         assert_eq!(token_price.price, 0.0);
     }
 
@@ -93,7 +90,7 @@ mod test {
     #[test]
     fn deserialize() {
         let resp_string = r#"{"success":true,"data":{"price":134.8625396815726,"updateUnixTime":1741526897,"updateHumanTime":"2025-03-09T13:28:17","volumeUSD":1726429451.421973,"volumeChangePercent":-37.9876049836133,"priceChangePercent":-2.2107631867842215}}"#;
-        let body = serde_json::from_str::<BirdEyeResponse>(resp_string).unwrap();
+        let body = serde_json::from_str::<BirdEyeResponse<TokenData>>(resp_string).unwrap();
         println!("Decoded response:\n{:#?}", body);
     }
 }

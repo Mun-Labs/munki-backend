@@ -23,3 +23,9 @@ Content-Type: application/json
   "message": "Hello, world!"
 }
 ###
+
+### GET request to example server
+GET {{url}}/api/v1/fearandgreed
+Accept: application/json
+###
+
