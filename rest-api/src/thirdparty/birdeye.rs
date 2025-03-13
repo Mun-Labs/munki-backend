@@ -60,6 +60,15 @@ impl PriceSdk for BirdEyeClient {
         let resp = resp.json::<BirdEyeResponse<TokenData>>().await?.data;
         Ok(resp)
     }
+
+    async fn get_price_time_range(
+        &self,
+        _token: &str,
+        _from: i64,
+        _to: i64,
+    ) -> Result<TokenData, anyhow::Error> {
+        todo!()
+    }
 }
 
 #[cfg(test)]

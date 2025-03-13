@@ -14,8 +14,15 @@ pub struct TokenPrice {
     pub price: f64,
 }
 
+#[allow(dead_code)]
 pub trait PriceSdk {
     async fn get_price(&self, token: &str) -> Result<TokenData, anyhow::Error>;
+    async fn get_price_time_range(
+        &self,
+        token: &str,
+        from: i64,
+        to: i64,
+    ) -> Result<TokenData, anyhow::Error>;
 }
 
 pub async fn get_price<T: PriceSdk>(

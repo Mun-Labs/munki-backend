@@ -45,22 +45,25 @@ impl AppState {
 
         sched
             .add(
-                Job::new_async("1/20 * * * * *", move |_uuid, mut _l| {
-                    let client = client.clone();
-                    let pool = pool.clone();
-
+                Job::new_async("0 * * * * *", move |_uuid, mut _l| {
                     Box::pin(async move {
-                        info!("Refresh sol price");
-                        let Ok(metric) = client.get_price(SOL_ADDRESS).await else {
-                            return;
-                        };
-
-                        if let Err(err) =
-                            price::store_metric_in_db(&pool, &metric, SOL_ADDRESS).await
-                        {
-                            error!("store metric {err}");
-                        }
+                        info!("runnning")
                     })
+
+                    //let client = client.clone();
+                    //let pool = pool.clone();
+                    //Box::pin(async move {
+                    //    info!("Refresh sol price");
+                    //    let Ok(metric) = client.get_price(SOL_ADDRESS).await else {
+                    //        return;
+                    //    };
+                    //
+                    //    if let Err(err) =
+                    //        price::store_metric_in_db(&pool, &metric, SOL_ADDRESS).await
+                    //    {
+                    //        error!("store metric {err}");
+                    //    }
+                    //})
                 })
                 .unwrap(),
             )
