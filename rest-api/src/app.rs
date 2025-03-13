@@ -47,7 +47,7 @@ impl AppState {
             .add(
                 Job::new_async("0 * * * * *", move |_uuid, mut _l| {
                     Box::pin(async move {
-                        info!("runnning")
+                        info!("running");
                     })
 
                     //let client = client.clone();

@@ -6,3 +6,4 @@ pub mod defi;
 pub use birdeye::*;
 pub use moni::*;
 pub use alternative_api::*;
+pub use defi::*;
