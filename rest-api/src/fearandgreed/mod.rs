@@ -1,4 +1,3 @@
-pub mod formula;
 pub mod route;
 
 use chrono::{DateTime, Timelike, Utc};
@@ -60,7 +59,7 @@ pub async fn batch_insert_fear_and_greed(
     }
     Ok(())
 }
-
+#[allow(dead_code)]
 pub async fn get_fear_and_greed_last_31_days(
     pool: &PgPool,
 ) -> Result<Vec<FearAndGreed>, sqlx::Error> {

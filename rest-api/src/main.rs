@@ -13,7 +13,7 @@ mod price;
 mod response;
 pub mod thirdparty;
 mod time_util;
-pub mod token;
+mod token;
 pub mod volume;
 pub mod wallet;
 
@@ -24,7 +24,15 @@ async fn main() {
     let r = Router::new();
     let router = Router::new()
         .route("/price/{address}", get(price::route::get_price))
-        .route("/health", get(token::search::search_token))
+        .route("/health", get(token::health::health))
+        .route(
+            "/mindshare",
+            get(token::route::mindshare),
+        )
+        .route(
+            "/token",
+            get(token::route::search_token),
+        )
         .route(
             "/fearandgreed",
             get(fearandgreed::route::get_fear_and_greed),
