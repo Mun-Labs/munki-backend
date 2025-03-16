@@ -69,11 +69,14 @@ pub struct Token {
 pub async fn search_token(
     State(app): State<AppState>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<Token>>, (StatusCode, String)> {
+) -> Result<Json<HttpResponse<Vec<Token>>>, (StatusCode, String)> {
     let tokens = search_tokens(&app.pool, &query.q, query.limit, query.offset)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    Ok(Json(tokens))
+    Ok(Json(HttpResponse {
+        code: 200,
+        response: tokens,
+    }))
 }
 pub async fn search_tokens(
     pool: &Pool<Postgres>,
