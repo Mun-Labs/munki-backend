@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS token_metrics (
 );
 
 -- ✅ Index for fast queries by token address and time
-CREATE INDEX idx_token_metrics_address_time ON token_metrics(token_address, update_unix_time DESC);
+CREATE INDEX if not exists idx_token_metrics_address_time ON token_metrics(token_address, update_unix_time DESC);
 
 -- ✅ Index for fast token lookups using ID
-CREATE INDEX idx_token_metrics_token_address ON token_metrics(token_address);
+CREATE INDEX if not exists idx_token_metrics_token_address ON token_metrics(token_address);

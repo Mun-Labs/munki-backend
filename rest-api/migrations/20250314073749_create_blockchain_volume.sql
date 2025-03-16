@@ -1,5 +1,5 @@
 -- Add migration script here
-CREATE TABLE block_chain_volume (
+CREATE TABLE IF NOT EXISTS block_chain_volume (
     id BIGSERIAL PRIMARY KEY,                  -- Auto-incrementing ID
     chain VARCHAR(126) NOT NULL,                  
     total24h BIGINT NOT NULL CHECK (total24h >= 0),      -- 24-hour total
