@@ -21,8 +21,12 @@ sqlx = { version = "0.8.3", features = [
   "runtime-tokio",
   "tls-native-tls",
   "bigdecimal",
+  "chrono"
 ] }
 serde_json = "1.0.139"
 moka = { version = "0.12.10", features = ["future"] }
 query_params = "0.1.0"
 bigdecimal = { version = "0.4", features = ["serde"] }
+tokio-cron-scheduler = "0.13.0"
+chrono = "0.4.40"
+log = "0.4.26"

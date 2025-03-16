@@ -1,21 +1,35 @@
+pub mod history;
 pub mod route;
 
+pub use history::*;
+
 use bigdecimal::ToPrimitive;
-use serde::Serialize;
 use sqlx::types::BigDecimal;
 use sqlx::PgPool;
 use sqlx::Row;
 
-use crate::thirdparty::TokenData;
+use crate::thirdparty::{PriceHistory, TokenData};
 
-#[derive(Serialize)]
-pub struct TokenPrice {
-    pub token: String,
-    pub price: f64,
+pub enum TimeFilters {
+    OneDay,
 }
 
+impl TimeFilters {
+    pub fn as_query_param(&self) -> &str {
+        match self {
+            Self::OneDay => "1D",
+        }
+    }
+}
+
+#[allow(dead_code)]
 pub trait PriceSdk {
     async fn get_price(&self, token: &str) -> Result<TokenData, anyhow::Error>;
+    async fn get_price_by_time_filter(
+        &self,
+        token: &str,
+        filter: TimeFilters,
+    ) -> Result<PriceHistory, anyhow::Error>;
 }
 
 pub async fn get_price<T: PriceSdk>(
@@ -38,7 +52,7 @@ pub async fn get_price<T: PriceSdk>(
 }
 
 /// ✅ Query the database for an existing metric
-async fn get_metric_from_db(
+pub async fn get_metric_from_db(
     pool: &PgPool,
     token_address: &str,
 ) -> Result<Option<TokenData>, sqlx::Error> {
@@ -77,7 +91,7 @@ async fn get_metric_from_db(
 }
 
 /// ✅ Store the fetched metric in the database
-async fn store_metric_in_db(
+pub async fn store_metric_in_db(
     pool: &PgPool,
     metric: &TokenData,
     token_address: &str,

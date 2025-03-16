@@ -1,4 +1,5 @@
-use crate::price::PriceSdk;
+use crate::price::{PriceSdk, TimeFilters};
+use chrono::{Duration, Timelike, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -8,21 +9,37 @@ use tracing::info;
 pub struct BirdEyeClient {
     base_url: String,
     api_key: String,
+    client: Client,
 }
 
 impl BirdEyeClient {
     pub fn new(base_url: &str, api_key: &str) -> Self {
         Self {
+            client: Client::new(),
             base_url: base_url.to_string(),
             api_key: api_key.to_string(),
         }
     }
 }
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BirdEyeResponse<T> {
     pub success: bool,
     pub data: T,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Items {
+    pub value: f64,
+    pub unix_time: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceHistory {
+    pub items: Vec<Items>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -39,10 +56,10 @@ pub struct TokenData {
 
 impl PriceSdk for BirdEyeClient {
     async fn get_price(&self, token: &str) -> Result<TokenData, anyhow::Error> {
-        let client = Client::new();
         let url = format!("{}/defi/price_volume/single", self.base_url);
         info!("price endpoint: {url}");
-        let resp = client
+        let resp = self
+            .client
             .get(url)
             .query(&[("address", token)])
             .header("X-API-KEY", &self.api_key)
@@ -58,6 +75,54 @@ impl PriceSdk for BirdEyeClient {
             ));
         }
         let resp = resp.json::<BirdEyeResponse<TokenData>>().await?.data;
+        Ok(resp)
+    }
+
+    async fn get_price_by_time_filter(
+        &self,
+        token: &str,
+        filter: TimeFilters,
+    ) -> Result<PriceHistory, anyhow::Error> {
+        let now = Utc::now();
+
+        // Beginning of today (midnight UTC)
+        let start_of_today = now
+            .with_hour(0)
+            .and_then(|t| t.with_minute(0))
+            .and_then(|t| t.with_second(0))
+            .and_then(|t| t.with_nanosecond(0))
+            .unwrap_or(now);
+        let today_unix = start_of_today.timestamp().to_string();
+
+        // Beginning of last week (7 days ago at midnight UTC)
+        let last_week = start_of_today - Duration::days(7);
+        let last_week_unix = last_week.timestamp().to_string();
+        let url = format!("{}/defi/history_price", self.base_url);
+        let resp = self
+            .client
+            .get(url)
+            .query(&[
+                ("address", token),
+                ("address_type", "token"),
+                ("type", filter.as_query_param()),
+                ("time_from", &last_week_unix),
+                ("time_to", &today_unix),
+            ])
+            .header("X-API-KEY", &self.api_key)
+            .header("accept", "application/json")
+            .header("x-chain", "solana")
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Request failed with status: {}",
+                resp.status()
+            ));
+        }
+
+        let resp = resp.json::<BirdEyeResponse<PriceHistory>>().await?.data;
+        info!("fetch price history: {resp:?}");
         Ok(resp)
     }
 }
@@ -76,7 +141,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_reqwest() {
+    async fn test_get_price_history() {
         use std::collections::HashMap;
         let resp = reqwest::get("https://httpbin.org/ip")
             .await

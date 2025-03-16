@@ -1,6 +1,10 @@
 use crate::config::{BirdeyeConfig, DatabaseConfig};
+use crate::fearandgreed::{batch_insert_fear_and_greed, FearAndGreed, FearAndGreedSdk};
+use crate::price::{self, PriceSdk, TimeFilters};
 use crate::thirdparty::alternative_api::AlternativeClient;
+use crate::thirdparty::defi::DefiClient;
 use crate::thirdparty::BirdEyeClient;
+use crate::volume;
 use axum::{
     body::{Body, Bytes},
     extract::Request,
@@ -10,7 +14,11 @@ use axum::{
 };
 use envconfig::Envconfig;
 use http_body_util::BodyExt;
-use sqlx::{Pool, Postgres};
+use reqwest::Client;
+use sqlx::{PgPool, Pool, Postgres};
+use std::sync::Arc;
+use tokio_cron_scheduler::{Job, JobScheduler};
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Debug, Clone)]
@@ -21,6 +29,8 @@ pub struct AppState {
     pub pool: Pool<Postgres>,
 }
 const ALTERNATIVE_BASE_URL: &str = "https://api.alternative.me/fng/";
+pub const SOL_ADDRESS: &str = "So11111111111111111111111111111111111111112";
+pub const SOLANA: &str = "solana";
 
 impl AppState {
     pub async fn new() -> Self {
@@ -32,6 +42,124 @@ impl AppState {
             alternative_client: AlternativeClient::new(ALTERNATIVE_BASE_URL.into(), 31),
             pool: init_pg_pool().await,
         }
+    }
+
+    pub async fn start_worker(app: Arc<Self>) {
+        let sched = JobScheduler::new().await.unwrap();
+        let pool = app.pool.clone();
+        let alternative_client = app.alternative_client.clone();
+        let app1 = app.clone();
+        Self::run(
+            &pool,
+            &DefiClient {
+                client: Client::new(),
+            },
+            &alternative_client,
+        )
+        .await;
+        sched
+            .add(
+                Job::new_async("0 0 * * * *", move |_uuid, mut _l| {
+                    let app = app1.clone();
+                    let defi_client = DefiClient {
+                        client: Client::new(),
+                    };
+                    let alternative_client = alternative_client.clone();
+                    Box::pin(async move {
+                        AppState::run(&app.pool, &defi_client, &alternative_client).await;
+                    })
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let app2 = app.clone();
+        Self::token_price_histories(&app2).await;
+        sched
+            .add(
+                Job::new_async("0 0 * * * *", move |_uuid, mut _l| {
+                    let app = app2.clone();
+                    Box::pin(async move {
+                        Self::token_price_histories(&app).await;
+                    })
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        let app3 = app.clone();
+        Self::sol_price(&app3).await;
+        sched
+            .add(
+                Job::new_async("0 0 * * * *", move |_uuid, mut _l| {
+                    let app = app3.clone();
+                    Box::pin(async move {
+                        Self::sol_price(&app).await;
+                    })
+                })
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        if let Err(err) = sched.start().await {
+            error!("start cron job error {err}");
+        }
+    }
+
+    async fn token_price_histories(app: &Arc<AppState>) {
+        match app
+            .bird_eye_client
+            .get_price_by_time_filter(SOL_ADDRESS, TimeFilters::OneDay)
+            .await
+        {
+            Err(e) => error!("upsert Refresh metric error {e}"),
+            Ok(sol_price) => {
+                match price::insert_token_prices(&app.pool, sol_price, SOL_ADDRESS).await {
+                    Ok(_) => info!("refresh price history successfully"),
+                    Err(err) => error!("refresh price history failed {err}"),
+                };
+            }
+        };
+    }
+
+    async fn run(pool: &PgPool, defi_client: &DefiClient, alternative_client: &AlternativeClient) {
+        let Ok(resp) = defi_client.get_blockchain_volum(SOLANA).await else {
+            return;
+        };
+
+        info!("fetching volume {resp:?}");
+        if let Err(e) = volume::upsert_metrics(pool, resp, SOLANA).await {
+            error!("upsert Refresh metric error {e}");
+            return;
+        }
+
+        let Ok(resp) = alternative_client.get_fear_and_greed(31).await else {
+            return;
+        };
+
+        let result = resp.iter().map(FearAndGreed::from).collect();
+        info!("fetching volume {result:?}");
+        if let Err(e) = batch_insert_fear_and_greed(pool, &result).await {
+            error!("upsert Refresh metric error {e}");
+            return;
+        }
+    }
+
+    async fn sol_price(p0: &Arc<AppState>) {
+        // ✅ 2. If not found, call 3rd-party API
+        let resp = p0.bird_eye_client.get_price(SOL_ADDRESS).await;
+        let Ok(metric) = resp else {
+            error!("fetch price error {}", resp.unwrap_err());
+            return;
+        };
+
+        // ✅ 3. Store the metric in the database
+        if let Err(err) = price::store_metric_in_db(&p0.pool, &metric, SOL_ADDRESS).await {
+            error!("store price failed {err}");
+        };
+        info!("fetch price stored successfully");
     }
 }
 

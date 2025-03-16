@@ -1,5 +1,5 @@
 use crate::app::AppState;
-use crate::price::{PriceSdk, TokenPrice};
+use crate::price::PriceSdk;
 use crate::thirdparty::TokenData;
 use axum::extract::State;
 use axum::http::StatusCode;
