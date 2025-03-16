@@ -2,30 +2,30 @@ use std::collections::HashMap;
 
 use crate::app::{AppState, SOLANA, SOL_ADDRESS};
 use crate::fearandgreed::{
-    batch_insert_fear_and_greed, current_gear_and_fear_history, gear_and_fear_history_by_unixtime,
-    get_fear_and_greed_last_31_days, upsert_fear_and_greed, FearAndGreedHistory, FearAndGreedSdk,
+    current_gear_and_fear_history, gear_and_fear_history_by_unixtime, upsert_fear_and_greed,
+    FearAndGreedHistory,
 };
 use crate::fearandgreed::{get_fear_and_greed_by_timestamp, FearAndGreed};
 use crate::response::HttpResponse;
 use crate::thirdparty::TokenData;
-use crate::{app, price, time_util, volume};
+use crate::{price, time_util, volume};
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use bigdecimal::ToPrimitive;
-use chrono::{DateTime, Duration, Timelike, Utc};
+use chrono::{Duration, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
 #[derive(Debug, Deserialize)]
 pub struct FearAndGreedQuery {
-    #[serde(default = "default_limit")]
-    limit: i8,
+    // #[serde(default = "default_limit")]
+    // limit: i8,
 }
 
-fn default_limit() -> i8 {
-    31
-}
+// fn default_limit() -> i8 {
+//     31
+// }
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,7 +36,7 @@ pub struct FearAndGreedResponse {
 
 pub async fn get_fear_and_greed(
     State(app): State<AppState>,
-    Query(params): Query<FearAndGreedQuery>,
+    Query(_params): Query<FearAndGreedQuery>,
 ) -> Result<Json<HttpResponse<FearAndGreedResponse>>, (StatusCode, String)> {
     let now = Utc::now();
     let start_of_a_day = time_util::get_start_of_day(now);
@@ -109,8 +109,8 @@ pub async fn get_fear_and_greed(
         histories.push(current);
 
         Ok(Json(HttpResponse {
-            status_code: 200,
-            data: FearAndGreedResponse {
+            code: 200,
+            response: FearAndGreedResponse {
                 fear_and_greed: histories,
                 token_prices: HashMap::from([(SOL_ADDRESS.to_string(), solana_price)]),
             },
@@ -211,8 +211,8 @@ pub async fn get_fear_and_greed(
         histories.push(greed);
 
         Ok(Json(HttpResponse {
-            status_code: 200,
-            data: FearAndGreedResponse {
+            code: 200,
+            response: FearAndGreedResponse {
                 fear_and_greed: histories,
                 token_prices: HashMap::from([(SOL_ADDRESS.to_string(), solana_price)]),
             },

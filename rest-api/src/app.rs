@@ -4,7 +4,8 @@ use crate::price::{self, PriceSdk, TimeFilters};
 use crate::thirdparty::alternative_api::AlternativeClient;
 use crate::thirdparty::defi::DefiClient;
 use crate::thirdparty::BirdEyeClient;
-use crate::volume;
+use crate::token::TrendingSdk;
+use crate::{time_util, token, volume};
 use axum::{
     body::{Body, Bytes},
     extract::Request,
@@ -12,6 +13,7 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use chrono::Utc;
 use envconfig::Envconfig;
 use http_body_util::BodyExt;
 use reqwest::Client;
@@ -98,7 +100,22 @@ impl AppState {
                         Self::sol_price(&app).await;
                     })
                 })
-                    .unwrap(),
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let mindshare_state = app.clone();
+        Self::mind_share(&app).await;
+        sched
+            .add(
+                Job::new_async("0 0 * * * *", move |_uuid, mut _l| {
+                    let app = mindshare_state.clone();
+                    Box::pin(async move {
+                        Self::mind_share(&app).await;
+                    })
+                })
+                .unwrap(),
             )
             .await
             .unwrap();
@@ -160,6 +177,26 @@ impl AppState {
             error!("store price failed {err}");
         };
         info!("fetch price stored successfully");
+    }
+
+    async fn mind_share(state: &Arc<AppState>) {
+        match state.bird_eye_client.get_trending(0, 20).await {
+            Ok(trending_token) => {
+                info!("get trending tokens {trending_token:?}");
+                if let Err(e) = token::upsert_token_meta(&state.pool, &trending_token).await {
+                    error!("upsert trending token error {e}");
+                }
+                let record_at = time_util::get_start_of_day(Utc::now()).timestamp();
+                if let Err(e) =
+                    token::upsert_daily_volume(&state.pool, &trending_token, record_at).await
+                {
+                    error!("upsert trending token error {e}");
+                }
+            }
+            Err(err) => {
+                error!("get trending tokens {err}");
+            }
+        };
     }
 }
 

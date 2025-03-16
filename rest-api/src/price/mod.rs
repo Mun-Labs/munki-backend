@@ -22,7 +22,6 @@ impl TimeFilters {
     }
 }
 
-#[allow(dead_code)]
 pub trait PriceSdk {
     async fn get_price(&self, token: &str) -> Result<TokenData, anyhow::Error>;
     async fn get_price_by_time_filter(
@@ -32,6 +31,7 @@ pub trait PriceSdk {
     ) -> Result<PriceHistory, anyhow::Error>;
 }
 
+#[allow(dead_code)]
 pub async fn get_price<T: PriceSdk>(
     pool: &PgPool,
     client: &T,
