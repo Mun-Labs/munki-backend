@@ -4,6 +4,7 @@ use crate::token::query_top_token_volume_history;
 use axum::extract::{Query, State};
 use axum::{http::StatusCode, Json};
 use bigdecimal::ToPrimitive;
+use chrono::Utc;
 use serde::Serialize;
 
 #[derive(serde::Serialize)]
@@ -43,6 +44,7 @@ pub async fn mindshare(
     Ok(Json(HttpResponse {
         code: 200,
         response: percent,
+        last_updated: Utc::now().timestamp(),
     }))
 }
 
@@ -76,6 +78,7 @@ pub async fn search_token(
     Ok(Json(HttpResponse {
         code: 200,
         response: tokens,
+        last_updated: Utc::now().timestamp(),
     }))
 }
 pub async fn search_tokens(
