@@ -188,7 +188,7 @@ pub async fn get_fear_and_greed(
         // Normalize to B (0-100 scale)
         let b = (50.0 + p).clamp(0.0, 100.0); // min(max(50 + P, 0), 100)
         let b = b as i64;
-        let value = (a as i64 + b + c) / 3;
+        let value = (a + b + c) / 3;
 
         let value_classification = if value < 25 {
             "Extreme Fear"
@@ -215,6 +215,217 @@ pub async fn get_fear_and_greed(
             response: FearAndGreedResponse {
                 fear_and_greed: histories,
                 token_prices: HashMap::from([(SOL_ADDRESS.to_string(), solana_price)]),
+            },
+        }))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VibeCheckResponse {
+    pub value: i64,
+    pub value_classification: String, // Match the API field name
+    pub timestamp: i64,
+    pub chain: String,
+    pub fear_and_greed: Vec<FearAndGreed>,
+    pub token_prices: HashMap<String, TokenData>,
+    pub last_update: i64,
+}
+
+pub async fn vibe_check(
+    State(app): State<AppState>,
+    Query(_params): Query<FearAndGreedQuery>,
+) -> Result<Json<HttpResponse<VibeCheckResponse>>, (StatusCode, String)> {
+    let now = Utc::now();
+    let start_of_a_day = time_util::get_start_of_day(now);
+    let last_week = start_of_a_day - Duration::days(7);
+    let yesterday = start_of_a_day - Duration::days(1);
+    let last_month = start_of_a_day - Duration::days(31);
+    let histories: Vec<FearAndGreed> = gear_and_fear_history_by_unixtime(
+        &app.pool,
+        vec![
+            yesterday.timestamp(),
+            last_week.timestamp(),
+            last_month.timestamp(),
+        ],
+    )
+    .await
+    .map(|items| items.into_iter().map(FearAndGreed::from).collect())
+    .map_err(|e| {
+        error!("gear_and_fear_history_by_unixtime error: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("get_fear_and_greed failed: {e}"),
+        )
+    })?;
+
+    let Some(solana_price) = price::get_metric_from_db(&app.pool, SOL_ADDRESS)
+        .await
+        .map_err(|e| {
+            error!("BirdEye get_price failed error: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "get price failed".to_string(),
+            )
+        })?
+    else {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "get price failed".to_string(),
+        ));
+    };
+
+    let Some(sol_vol) =
+        volume::get_volume_by_date(&app.pool, time_util::get_start_of_day(now), SOLANA)
+            .await
+            .map_err(|e| {
+                error!("BirdEye get_price failed error: {e}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "get price failed".to_string(),
+                )
+            })?
+    else {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "get price failed".to_string(),
+        ));
+    };
+
+    if let Some(resp) = current_gear_and_fear_history(&app.pool, start_of_a_day.timestamp())
+        .await
+        .map_err(|e| {
+            error!("current_gear_and_fear_history error: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Alternative get_fear_and_greed failed: {e}"),
+            )
+        })?
+    {
+        info!("get data from database");
+        let FearAndGreed {
+            value,
+            value_classification,
+            timestamp,
+            chain,
+        } = FearAndGreed::from(resp);
+
+        Ok(Json(HttpResponse {
+            code: 200,
+            response: VibeCheckResponse {
+                fear_and_greed: histories,
+                token_prices: HashMap::from([(SOL_ADDRESS.to_string(), solana_price)]),
+                value,
+                value_classification,
+                timestamp,
+                chain,
+                last_update: Utc::now().timestamp(),
+            },
+        }))
+    } else {
+        info!("refresh data");
+        let Some(resp) = get_fear_and_greed_by_timestamp(&app.pool, Utc::now().timestamp())
+            .await
+            .map_err(|e| {
+                error!("get_fear_and_greed error: {e}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Alternative get_fear_and_greed failed: {e}"),
+                )
+            })?
+        else {
+            return Err((
+                StatusCode::NOT_FOUND,
+                "Alternative get_fear_and_greed not found".to_string(),
+            ));
+        };
+        let a = resp.value;
+        let c = sol_vol.total24h;
+        let billions = c as f64 / 1_000_000_000.0;
+
+        // Map to score based on ranges
+        let c = match billions {
+            b if b < 1.0 => 10,
+            b if b < 2.0 => 20,
+            b if b < 3.0 => 30,
+            b if b < 4.0 => 40,
+            b if b < 5.0 => 50,
+            b if b < 6.0 => 60,
+            b if b < 7.0 => 70,
+            b if b < 8.0 => 80,
+            b if b < 9.0 => 90,
+            b if b < 10.0 => 90, // $9B to < $10B
+            _ => 100,            // ≥ $10B
+        } as i64;
+
+        let start_of_today = now
+            .with_hour(0)
+            .and_then(|t| t.with_minute(0))
+            .and_then(|t| t.with_second(0))
+            .and_then(|t| t.with_nanosecond(0))
+            .unwrap_or(now);
+
+        let last_week = start_of_today - Duration::days(7);
+
+        let prices =
+            price::get_token_prices_between(&app.pool, SOL_ADDRESS, last_week, start_of_today)
+                .await
+                .map_err(|e| {
+                    error!("BirdEye get_price failed error: {e}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "get price failed".to_string(),
+                    )
+                })?;
+        let mut changes = Vec::new();
+        for i in 1..prices.len() {
+            let prev_price = prices[i - 1].price.to_f64().unwrap_or_default();
+            let curr_price = prices[i].price.to_f64().unwrap_or_default();
+            let change = ((curr_price - prev_price) / prev_price) * 100.0; // % change
+            changes.push(change);
+        }
+
+        // Calculate 7-day average change (P)
+        let p = if changes.is_empty() {
+            0.0 // No change if only one price
+        } else {
+            changes.iter().sum::<f64>() / changes.len() as f64
+        };
+
+        // Normalize to B (0-100 scale)
+        let b = (50.0 + p).clamp(0.0, 100.0); // min(max(50 + P, 0), 100)
+        let b = b as i64;
+        let value = (a + b + c) / 3;
+
+        let value_classification = if value < 25 {
+            "Extreme Fear"
+        } else if value < 50 {
+            "Fear"
+        } else if value < 75 {
+            "Greed"
+        } else {
+            "Extreme Greed"
+        };
+        let greed = FearAndGreed {
+            value,
+            value_classification: value_classification.into(),
+            timestamp: start_of_today.timestamp(),
+            chain: SOLANA.into(),
+        };
+        if let Err(e) = upsert_fear_and_greed(&app.pool, &greed).await {
+            error!("upsert fear and greed error: {e}");
+        }
+
+        Ok(Json(HttpResponse {
+            code: 200,
+            response: VibeCheckResponse {
+                fear_and_greed: histories,
+                token_prices: HashMap::from([(SOL_ADDRESS.to_string(), solana_price)]),
+                value,
+                value_classification: greed.value_classification,
+                timestamp: greed.timestamp,
+                chain: greed.chain,
+                last_update: Utc::now().timestamp(),
             },
         }))
     }
