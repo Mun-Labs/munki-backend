@@ -1,5 +1,5 @@
 use app::{print_request_response, AppState};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{middleware, Router};
 use std::env;
 use std::sync::Arc;
@@ -16,6 +16,7 @@ mod time_util;
 mod token;
 pub mod volume;
 pub mod wallet;
+mod webhook;
 
 #[tokio::main]
 async fn main() {
@@ -32,6 +33,10 @@ async fn main() {
         .route(
             "/token",
             get(token::route::search_token),
+        )
+        .route(
+            "/webhook",
+            post(webhook::webhook_handler),
         )
         .route(
             "/fearandgreed",
