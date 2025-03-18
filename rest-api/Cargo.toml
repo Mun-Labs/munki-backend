@@ -30,3 +30,4 @@ bigdecimal = { version = "0.4", features = ["serde"] }
 tokio-cron-scheduler = "0.13.0"
 chrono = "0.4.40"
 log = "0.4.26"
+helius = "0.2.5"
