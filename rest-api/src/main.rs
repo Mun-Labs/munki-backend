@@ -39,6 +39,10 @@ async fn main() {
             post(webhook::webhook_handler),
         )
         .route(
+            "/vibecheck",
+            get(fearandgreed::route::vibe_check),
+        )
+        .route(
             "/fearandgreed",
             get(fearandgreed::route::get_fear_and_greed),
         )
