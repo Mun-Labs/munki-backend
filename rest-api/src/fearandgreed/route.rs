@@ -114,6 +114,7 @@ pub async fn get_fear_and_greed(
                 fear_and_greed: histories,
                 token_prices: HashMap::from([(SOL_ADDRESS.to_string(), solana_price)]),
             },
+            last_updated: Utc::now().timestamp(),
         }))
     } else {
         info!("refresh data");
@@ -216,6 +217,7 @@ pub async fn get_fear_and_greed(
                 fear_and_greed: histories,
                 token_prices: HashMap::from([(SOL_ADDRESS.to_string(), solana_price)]),
             },
+            last_updated: Utc::now().timestamp(),
         }))
     }
 }
@@ -229,7 +231,6 @@ pub struct VibeCheckResponse {
     pub chain: String,
     pub fear_and_greed: Vec<FearAndGreed>,
     pub token_prices: HashMap<String, TokenData>,
-    pub last_update: i64,
 }
 
 pub async fn vibe_check(
@@ -319,8 +320,8 @@ pub async fn vibe_check(
                 value_classification,
                 timestamp,
                 chain,
-                last_update: Utc::now().timestamp(),
             },
+            last_updated: Utc::now().timestamp(),
         }))
     } else {
         info!("refresh data");
@@ -425,8 +426,8 @@ pub async fn vibe_check(
                 value_classification: greed.value_classification,
                 timestamp: greed.timestamp,
                 chain: greed.chain,
-                last_update: Utc::now().timestamp(),
             },
+            last_updated: Utc::now().timestamp(),
         }))
     }
 }

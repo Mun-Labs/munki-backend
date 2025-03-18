@@ -1,7 +1,9 @@
-use axum::Json;
+use axum::{extract::State, Json};
 use helius::types::{NativeTransfer, TokenTransfer};
 use serde::{Deserialize, Serialize};
 use tracing::info;
+
+use crate::app::AppState;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -15,7 +17,10 @@ pub struct EnhancedTransaction {
 //    Sell,
 //}
 
-pub async fn webhook_handler(Json(payload): Json<Vec<EnhancedTransaction>>) -> &'static str {
+pub async fn webhook_handler(
+    State(app): State<AppState>,
+    Json(payload): Json<Vec<EnhancedTransaction>>,
+) -> &'static str {
     // Process the webhook payload here
     info!("Received webhook event: {:?}", payload);
     "Webhook received"
