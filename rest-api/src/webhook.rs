@@ -1,29 +1,219 @@
 use axum::{extract::State, Json};
-use helius::types::{NativeTransfer, TokenTransfer};
+use helius::types::TokenTransfer;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use std::collections::HashSet;
 use tracing::info;
 
 use crate::app::AppState;
+use crate::token;
+use crate::token::TokenSdk;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct EnhancedTransaction {
-    pub native_transfers: Option<Vec<NativeTransfer>>,
+    pub native_transfers: Option<Vec<helius::types::NativeTransfer>>,
     pub token_transfers: Option<Vec<TokenTransfer>>,
+    pub slot: i64,
+    pub signature: String,
+    pub timestamp: i64,
 }
 
-//pub enum Action {
-//    Buy,
-//    Sell,
-//}
+#[derive(sqlx::FromRow, Debug)]
+pub struct MarketMover {
+    pub wallet_address: String,
+    // additional fields if needed
+}
+
+// Helper function to extract unique wallet addresses from the payload
+fn extract_wallets(transactions: &[EnhancedTransaction]) -> Vec<String> {
+    let mut wallets = HashSet::new();
+    for trans in transactions {
+        if let Some(token_transfers) = trans.token_transfers.as_ref() {
+            for transfer in token_transfers {
+                if let Some(from) = transfer.user_accounts.from_user_account.as_ref() {
+                    wallets.insert(from.clone());
+                }
+
+                if let Some(from) = transfer.user_accounts.to_user_account.as_ref() {
+                    wallets.insert(from.clone());
+                }
+            }
+        }
+    }
+    wallets.into_iter().collect()
+}
+
+// Helper function to load market movers whose wallet addresses appear in the payload
+async fn load_wallets_by_list(
+    pool: &PgPool,
+    wallet_addresses: &[String],
+) -> Result<Vec<MarketMover>, sqlx::Error> {
+    // Using ANY($1) requires passing a slice
+    sqlx::query_as::<_, MarketMover>(
+        "SELECT wallet_address FROM market_mover WHERE wallet_address = ANY($1)",
+    )
+    .bind(wallet_addresses)
+    .fetch_all(pool)
+    .await
+}
 
 pub async fn webhook_handler(
     State(app): State<AppState>,
     Json(payload): Json<Vec<EnhancedTransaction>>,
 ) -> &'static str {
-    // Process the webhook payload here
-    info!("Received webhook event: {:?}", payload);
+    // Extract distinct wallet addresses from payload token transfers.
+    let wallet_list = extract_wallets(&payload);
+    info!("Wallets from payload: {:?}", wallet_list);
+
+    // Load only wallets that are present in the payload.
+    let wallets = match load_wallets_by_list(&app.pool, &wallet_list).await {
+        Ok(wallets) => wallets,
+        Err(e) => {
+            tracing::error!("Failed to load wallets: {:?}", e);
+            return "Error loading wallets";
+        }
+    };
+    info!("Wallets from payload: {:?}", wallets);
+
+    // Process each transaction against the wallets retrieved from the database.
+    for transaction in payload {
+        if let Some(transfers) = transaction.token_transfers {
+            for transfer in transfers {
+                let mut action = ("".to_string(), "".into());
+                let from_user = transfer
+                    .user_accounts
+                    .from_user_account
+                    .clone()
+                    .unwrap_or_default();
+                if wallets
+                    .iter()
+                    .find(|a| a.wallet_address == from_user)
+                    .is_some()
+                {
+                    action = ("sell".to_string(), from_user);
+                }
+
+                let to_user = transfer
+                    .user_accounts
+                    .to_user_account
+                    .clone()
+                    .unwrap_or_default();
+                if wallets
+                    .iter()
+                    .find(|a| a.wallet_address == to_user)
+                    .is_some()
+                {
+                    action = ("buy".to_string(), to_user);
+                }
+                if action.0 == "".to_string() {
+                    continue;
+                }
+
+                // Adjust field extraction as needed.
+                let token_address = transfer.mint.clone();
+                let amount = transfer.token_amount.as_f64().unwrap_or_default();
+                let block_time = transaction.timestamp;
+                let slot = transaction.slot;
+
+                let (action, wallet) = action;
+                if let Err(e) = upsert_transaction(
+                    &app.pool,
+                    &transaction.signature,
+                    &token_address,
+                    &wallet,
+                    &action,
+                    amount,
+                    block_time,
+                    slot,
+                )
+                .await
+                {
+                    tracing::error!("Failed to upsert transaction: {:?}", e);
+                }
+
+                // Fetch token information from BirdEye and update token table
+                match token::token_by_address(&app.pool, &token_address).await {
+                    Ok(Some(record)) => {
+                        // Token exists with fresh data, no need to fetch from BirdEye
+                        info!(
+                            "Using existing token data for {}: {}",
+                            token_address, record.name
+                        );
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to fetch token data: {:?}", e);
+                    }
+                    Ok(None) => {
+                        // Token doesn't exist or data is stale, fetch from BirdEye
+                        match app.bird_eye_client.overview(&token_address).await {
+                            Ok(token_meta) => {
+                                // Convert to Trending format for the upsert function
+                                let trending = vec![crate::token::Trending {
+                                    address: token_meta.address,
+                                    decimals: token_meta.decimals,
+                                    logo_uri: Some(token_meta.logo_uri),
+                                    name: token_meta.name,
+                                    symbol: token_meta.symbol,
+                                    volume24h_usd: 0.0, // No volume data in overview
+                                    rank: 0,            // No rank data in overview
+                                    price: token_meta.market_cap / 10f64.powi(token_meta.decimals), // Approximate price
+                                }];
+
+                                if let Err(e) =
+                                    crate::token::upsert_token_meta(&app.pool, &trending).await
+                                {
+                                    tracing::error!("Failed to upsert token metadata: {:?}", e);
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to fetch token metadata from BirdEye: {:?}",
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     "Webhook received"
+}
+
+async fn upsert_transaction(
+    pool: &PgPool,
+    signature: &str,
+    token_address: &str,
+    wallet_address: &str,
+    transaction_type: &str,
+    amount: f64,
+    block_time: i64,
+    slot: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO market_movers_transaction
+         (signature, token_address, wallet_address, transaction_type, amount, block_time, slot)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (signature) DO UPDATE
+         SET token_address = EXCLUDED.token_address,
+             wallet_address = EXCLUDED.wallet_address,
+             transaction_type = EXCLUDED.transaction_type,
+             amount = EXCLUDED.amount,
+             block_time = EXCLUDED.block_time,
+             slot = EXCLUDED.slot,
+             additional = EXCLUDED.additional",
+    )
+    .bind(signature)
+    .bind(token_address)
+    .bind(wallet_address)
+    .bind(transaction_type)
+    .bind(amount)
+    .bind(block_time)
+    .bind(slot)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 #[cfg(test)]

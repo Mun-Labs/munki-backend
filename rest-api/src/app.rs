@@ -4,7 +4,7 @@ use crate::price::{self, PriceSdk, TimeFilters};
 use crate::thirdparty::alternative_api::AlternativeClient;
 use crate::thirdparty::defi::DefiClient;
 use crate::thirdparty::BirdEyeClient;
-use crate::token::TrendingSdk;
+use crate::token::TokenSdk;
 use crate::{time_util, token, volume};
 use axum::{
     body::{Body, Bytes},
