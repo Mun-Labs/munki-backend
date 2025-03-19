@@ -5,7 +5,7 @@ use sqlx::PgPool;
 use std::collections::HashSet;
 use tracing::info;
 
-use crate::app::AppState;
+use crate::app::{AppState, SOL_ADDRESS};
 use crate::token;
 use crate::token::TokenSdk;
 
@@ -133,9 +133,9 @@ pub async fn webhook_handler(
                     tracing::error!("Failed to upsert transaction: {:?}", e);
                 }
 
-                token_addresses.push(token_address);
-
-                // Fetch token information from BirdEye and update token table
+                if token_address != SOL_ADDRESS {
+                    token_addresses.push(token_address);
+                }
             }
         }
     }
@@ -143,9 +143,15 @@ pub async fn webhook_handler(
         Err(e) => {
             tracing::error!("Failed to fetch token data: {:?}", e);
         }
+        Ok(missing) if missing.is_empty() => {
+            info!("no token to fetch");
+        }
         Ok(missing) => {
             // Token doesn't exist or data is stale, fetch from BirdEye
             match app.bird_eye_client.overview(missing).await {
+                Ok(token_meta_list) if token_meta_list.is_empty() => {
+                    info!("birdeye no tokens");
+                }
                 Ok(token_meta_list) => {
                     info!("Fetched token metadata: {:?}", token_meta_list);
                     // Map the token metadata list to a list of Trending records.

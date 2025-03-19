@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres, QueryBuilder};
+use std::collections::HashMap;
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Trending {
@@ -22,7 +22,7 @@ pub struct TokenMetadata {
     pub decimals: i32,
     pub symbol: String,
     pub name: String,
-    pub extensions: Option<HashMap<String, String>>,
+    pub extensions: Option<HashMap<String, Option<String>>>,
     pub logo_uri: String,
 }
 
@@ -123,12 +123,11 @@ pub async fn token_by_address(
     addresses: Vec<String>,
 ) -> anyhow::Result<Vec<String>> {
     // Query the existing token addresses from the tokens table.
-    let existing: Vec<String> = sqlx::query_scalar(
-        "SELECT token_address FROM tokens WHERE token_address = ANY($1)"
-    )
-        .bind(&addresses)
-        .fetch_all(pool)
-        .await?;
+    let existing: Vec<String> =
+        sqlx::query_scalar("SELECT token_address FROM tokens WHERE token_address = ANY($1)")
+            .bind(&addresses)
+            .fetch_all(pool)
+            .await?;
 
     // Retain only addresses that are not present in the existing list.
     let missing: Vec<String> = addresses
@@ -144,4 +143,50 @@ pub struct Token {
     pub name: String,
     pub symbol: String,
     pub logo_uri: Option<String>,
+}
+
+#[cfg(test)]
+mod internal_test {
+    use crate::thirdparty::BirdEyeResponse;
+    use crate::token::TokenMetadata;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_dese() {
+        let a : BirdEyeResponse<HashMap<String, TokenMetadata>> = serde_json::from_str(r#"
+{
+  "data": {
+    "Kruj63Qx9EQX9QzukLCBgx5g9AGW69gPDsSK25FRZAi": {
+      "address": "Kruj63Qx9EQX9QzukLCBgx5g9AGW69gPDsSK25FRZAi",
+      "name": "EnKryptedAI",
+      "symbol": "KRAI",
+      "decimals": 6,
+      "extensions": {
+        "description": "Your favorite superhero's dog is now your ultimate AI-powered guardian protecting against crypto scams. With superintelligent detection, EnKrypto sniffs out fraud, protects your assets, and provides real-time market insights. Loyal, fast, and unstoppable, EnKryptedAI ensures you stay ahead in the world of blockchain. 🚀🐶💎"
+      },
+      "logo_uri": "https://ipfs.io/ipfs/QmeR75gX8kuwbFzLzj2GBDLNbZjpS4ezsV1zjyCP4uw7F7"
+    },
+    "So11111111111111111111111111111111111111112": {
+      "address": "So11111111111111111111111111111111111111112",
+      "name": "Wrapped SOL",
+      "symbol": "SOL",
+      "decimals": 9,
+      "extensions": {
+        "coingecko_id": "solana",
+        "serum_v3_usdc": "9wFFyRfZBsuAha4YcuxcXLKwMxJR43S7fPfQLusDBzvT",
+        "serum_v3_usdt": "HWHvQhFmJB3NUcu1aihKmrKegfVxBEHzwVX6yZCKEsi1",
+        "website": "https://solana.com/",
+        "telegram": null,
+        "twitter": "https://twitter.com/solana",
+        "description": "Wrapped Solana ",
+        "discord": "https://discordapp.com/invite/pquxPsq",
+        "medium": "https://medium.com/solana-labs"
+      },
+      "logo_uri": "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png"
+    }
+  },
+  "success": true
+}
+        "#).unwrap();
+    }
 }
