@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres, QueryBuilder};
@@ -15,9 +16,24 @@ pub struct Trending {
     pub rank: u32,
     pub price: f64,
 }
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenMetadata {
+    pub address: String,
+    pub decimals: i32,
+    pub symbol: String,
+    pub name: String,
+    pub market_cap: f64,
+    pub fdv: f64,
+    pub extensions: HashMap<String, String>,
+    #[serde(rename = "logoURI")]
+    pub logo_uri: String,
+    pub liquidity: f64,
+}
 
-pub trait TrendingSdk {
+pub trait TokenSdk {
     async fn get_trending(&self, offset: i32, limit: i32) -> Result<Vec<Trending>, anyhow::Error>;
+    async fn overview(&self, address: &str) -> Result<TokenMetadata, anyhow::Error>;
 }
 
 pub async fn upsert_token_meta(
@@ -106,4 +122,29 @@ pub async fn query_top_token_volume_history(
     .fetch_all(pool)
     .await?;
     Ok(records)
+}
+pub async fn token_by_address(
+    pool: &Pool<Postgres>,
+    address: &str,
+) -> anyhow::Result<Option<Token>> {
+    let record = sqlx::query_as::<_, Token>(
+        r#"SELECT token_address as address,
+                  name,
+                  symbol,
+                  image_url as logo_uri,
+                  decimals
+           FROM tokens
+           WHERE token_address = $1"#,
+    )
+    .bind(address)
+    .fetch_optional(pool)
+    .await?;
+    Ok(record)
+}
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct Token {
+    pub address: String,
+    pub name: String,
+    pub symbol: String,
+    pub logo_uri: Option<String>,
 }

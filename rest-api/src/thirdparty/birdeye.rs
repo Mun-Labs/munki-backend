@@ -1,5 +1,6 @@
+use anyhow::Error;
 use crate::price::{PriceSdk, TimeFilters};
-use crate::token::{Trending, TrendingSdk};
+use crate::token::{Trending, TokenSdk, TokenMetadata};
 use chrono::{Duration, Timelike, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -61,7 +62,7 @@ pub struct TrendingResponse {
     pub update_time: String,
     pub tokens: Vec<Trending>,
 }
-impl TrendingSdk for BirdEyeClient {
+impl TokenSdk for BirdEyeClient {
      async fn get_trending(&self, offset: i32, limit: i32) -> Result<Vec<Trending>, anyhow::Error> {
         let url = format!("{}/defi/token_trending", self.base_url);
         let resp = self
@@ -92,6 +93,29 @@ impl TrendingSdk for BirdEyeClient {
          let body = serde_json::from_str::<BirdEyeResponse<TrendingResponse>>(&resp)?;
          info!("fetch price history: {body:?}");
          Ok(body.data.tokens)
+    }
+
+    async fn overview(&self, address: &str) -> Result<TokenMetadata, Error> {
+        let url = format!("{}/defi/token_overview", self.base_url);
+        let resp = self
+            .client
+            .get(url)
+            .query(&[("address", address)])
+            .header("X-API-KEY", &self.api_key)
+            .header("accept", "application/json")
+            .header("x-chain", "solana")
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow::anyhow!(
+            "Request failed with status: {}",
+            resp.status()
+        ));
+        }
+
+        let resp = resp.json::<BirdEyeResponse<TokenMetadata>>().await?.data;
+        Ok(resp)
     }
 }
 

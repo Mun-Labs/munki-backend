@@ -17,6 +17,7 @@ mod token;
 pub mod volume;
 pub mod wallet;
 mod webhook;
+mod market_mover;
 
 #[tokio::main]
 async fn main() {
