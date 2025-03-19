@@ -1,9 +1,10 @@
-use anyhow::Error;
 use crate::price::{PriceSdk, TimeFilters};
-use crate::token::{Trending, TokenSdk, TokenMetadata};
+use crate::token::{TokenMetadata, TokenSdk, Trending};
+use anyhow::Error;
 use chrono::{Duration, Timelike, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tracing::info;
 
 #[allow(dead_code)]
@@ -63,7 +64,7 @@ pub struct TrendingResponse {
     pub tokens: Vec<Trending>,
 }
 impl TokenSdk for BirdEyeClient {
-     async fn get_trending(&self, offset: i32, limit: i32) -> Result<Vec<Trending>, anyhow::Error> {
+    async fn get_trending(&self, offset: i32, limit: i32) -> Result<Vec<Trending>, anyhow::Error> {
         let url = format!("{}/defi/token_trending", self.base_url);
         let resp = self
             .client
@@ -87,20 +88,22 @@ impl TokenSdk for BirdEyeClient {
             ));
         }
 
-         let resp = resp.text().await?;
-         println!("{}", resp);
+        let resp = resp.text().await?;
+        println!("{}", resp);
 
-         let body = serde_json::from_str::<BirdEyeResponse<TrendingResponse>>(&resp)?;
-         info!("fetch price history: {body:?}");
-         Ok(body.data.tokens)
+        let body = serde_json::from_str::<BirdEyeResponse<TrendingResponse>>(&resp)?;
+        info!("fetch price history: {body:?}");
+        Ok(body.data.tokens)
     }
 
-    async fn overview(&self, address: &str) -> Result<TokenMetadata, Error> {
-        let url = format!("{}/defi/token_overview", self.base_url);
+    async fn overview(&self, addresses: Vec<String>) -> Result<Vec<TokenMetadata>, Error> {
+        let url = format!("{}/defi/v3/token/meta-data/multiple", self.base_url);
+        println!("{}", url);
+        println!("{}", addresses.join(","));
         let resp = self
             .client
             .get(url)
-            .query(&[("address", address)])
+            .query(&[("list_address", addresses.join(",").as_str())])
             .header("X-API-KEY", &self.api_key)
             .header("accept", "application/json")
             .header("x-chain", "solana")
@@ -109,13 +112,17 @@ impl TokenSdk for BirdEyeClient {
 
         if !resp.status().is_success() {
             return Err(anyhow::anyhow!(
-            "Request failed with status: {}",
-            resp.status()
-        ));
+                "Request failed with status: {}",
+                resp.status()
+            ));
         }
 
-        let resp = resp.json::<BirdEyeResponse<TokenMetadata>>().await?.data;
-        Ok(resp)
+        let resp = resp
+            .json::<BirdEyeResponse<HashMap<String, TokenMetadata>>>()
+            .await?
+            .data;
+
+        Ok(resp.into_iter().map(|(_, a)| a).collect())
     }
 }
 

@@ -77,6 +77,7 @@ pub async fn webhook_handler(
     info!("Wallets from payload: {:?}", wallets);
 
     // Process each transaction against the wallets retrieved from the database.
+    let mut token_addresses = vec![];
     for transaction in payload {
         if let Some(transfers) = transaction.token_transfers {
             for transfer in transfers {
@@ -132,48 +133,42 @@ pub async fn webhook_handler(
                     tracing::error!("Failed to upsert transaction: {:?}", e);
                 }
 
-                // Fetch token information from BirdEye and update token table
-                match token::token_by_address(&app.pool, &token_address).await {
-                    Ok(Some(record)) => {
-                        // Token exists with fresh data, no need to fetch from BirdEye
-                        info!(
-                            "Using existing token data for {}: {}",
-                            token_address, record.name
-                        );
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to fetch token data: {:?}", e);
-                    }
-                    Ok(None) => {
-                        // Token doesn't exist or data is stale, fetch from BirdEye
-                        match app.bird_eye_client.overview(&token_address).await {
-                            Ok(token_meta) => {
-                                // Convert to Trending format for the upsert function
-                                let trending = vec![crate::token::Trending {
-                                    address: token_meta.address,
-                                    decimals: token_meta.decimals,
-                                    logo_uri: Some(token_meta.logo_uri),
-                                    name: token_meta.name,
-                                    symbol: token_meta.symbol,
-                                    volume24h_usd: 0.0, // No volume data in overview
-                                    rank: 0,            // No rank data in overview
-                                    price: token_meta.market_cap / 10f64.powi(token_meta.decimals), // Approximate price
-                                }];
+                token_addresses.push(token_address);
 
-                                if let Err(e) =
-                                    crate::token::upsert_token_meta(&app.pool, &trending).await
-                                {
-                                    tracing::error!("Failed to upsert token metadata: {:?}", e);
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "Failed to fetch token metadata from BirdEye: {:?}",
-                                    e
-                                );
-                            }
-                        }
+                // Fetch token information from BirdEye and update token table
+            }
+        }
+    }
+    match token::token_by_address(&app.pool, token_addresses).await {
+        Err(e) => {
+            tracing::error!("Failed to fetch token data: {:?}", e);
+        }
+        Ok(missing) => {
+            // Token doesn't exist or data is stale, fetch from BirdEye
+            match app.bird_eye_client.overview(missing).await {
+                Ok(token_meta_list) => {
+                    info!("Fetched token metadata: {:?}", token_meta_list);
+                    // Map the token metadata list to a list of Trending records.
+                    let trending: Vec<token::Trending> = token_meta_list
+                        .into_iter()
+                        .map(|tm| token::Trending {
+                            address: tm.address,
+                            decimals: tm.decimals,
+                            logo_uri: Some(tm.logo_uri),
+                            name: tm.name,
+                            symbol: tm.symbol,
+                            volume24h_usd: 0.0, // No volume data in overview
+                            rank: 0,            // No rank data in overview
+                            price: 0.0,
+                        })
+                        .collect();
+
+                    if let Err(e) = crate::token::upsert_token_meta(&app.pool, &trending).await {
+                        tracing::error!("Failed to upsert token metadata: {:?}", e);
                     }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to fetch token metadata from BirdEye: {:?}", e);
                 }
             }
         }
