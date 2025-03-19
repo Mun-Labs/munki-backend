@@ -52,11 +52,14 @@ pub async fn mindshare(
 use anyhow::Result;
 use serde::Deserialize;
 use sqlx::{Pool, Postgres};
+use validator::Validate;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct SearchQuery {
     pub q: String,
+    #[validate(range(min = 1, max = 100))]
     pub limit: i64,
+    #[validate(range(min = 0))]
     pub offset: i64,
 }
 
@@ -72,6 +75,9 @@ pub async fn search_token(
     State(app): State<AppState>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<HttpResponse<Vec<Token>>>, (StatusCode, String)> {
+    if let Err(validation_errors) = query.validate() {
+        return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
+    }
     let tokens = search_tokens(&app.pool, &query.q, query.limit, query.offset)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

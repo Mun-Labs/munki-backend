@@ -3,12 +3,15 @@ use axum::routing::{get, post};
 use axum::{middleware, Router};
 use std::env;
 use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
+mod alpha_move;
 pub mod app;
 pub mod config;
 mod fearandgreed;
 pub mod jobs;
+mod market_mover;
 mod price;
 mod response;
 pub mod thirdparty;
@@ -17,38 +20,31 @@ mod token;
 pub mod volume;
 pub mod wallet;
 mod webhook;
-mod market_mover;
 
 #[tokio::main]
 async fn main() {
     let app_state = AppState::new().await;
     let shared_state = Arc::new(app_state.clone());
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
     let r = Router::new();
     let router = Router::new()
         .route("/price/{address}", get(price::route::get_price))
         .route("/health", get(token::health::health))
-        .route(
-            "/mindshare",
-            get(token::route::mindshare),
-        )
-        .route(
-            "/token",
-            get(token::route::search_token),
-        )
-        .route(
-            "/webhook",
-            post(webhook::webhook_handler),
-        )
-        .route(
-            "/vibecheck",
-            get(fearandgreed::route::vibe_check),
-        )
+        .route("/mindshare", get(token::route::mindshare))
+        .route("/token", get(token::route::search_token))
+        .route("/webhook", post(webhook::webhook_handler))
+        .route("/vibecheck", get(fearandgreed::route::vibe_check))
+        .route("/alphamoves", get(alpha_move::get_mover_transaction))
         .route(
             "/fearandgreed",
             get(fearandgreed::route::get_fear_and_greed),
         )
         .with_state(app_state)
-        .layer(middleware::from_fn(print_request_response));
+        .layer(middleware::from_fn(print_request_response))
+        .layer(cors);
     AppState::start_worker(shared_state.clone()).await;
 
     let app = r.nest("/api/v1", router);
