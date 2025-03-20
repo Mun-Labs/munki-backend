@@ -173,53 +173,53 @@ pub async fn token_watch_exists(pool: &PgPool, token_address: &str) -> Result<bo
             .await?;
     Ok(exists)
 }
-pub async fn batch_insert_tokens_into_watch(
-    app: &AppState,
-    token_addresses: &[String],
-) -> anyhow::Result<()> {
-    // Using UNNEST to convert the slice to a set of rows for batch insertion.
-    sqlx::query(
-        "INSERT INTO token_watch (token_address)
-         SELECT UNNEST($1::text[])
-         ON CONFLICT (token_address) DO NOTHING",
-    )
-    .bind(token_addresses)
-    .execute(&app.pool)
-    .await?;
-    Ok(())
-}
+// pub async fn batch_insert_tokens_into_watch(
+//     app: &AppState,
+//     token_addresses: &[String],
+// ) -> anyhow::Result<()> {
+//     // Using UNNEST to convert the slice to a set of rows for batch insertion.
+//     sqlx::query(
+//         "INSERT INTO token_watch (token_address)
+//          SELECT UNNEST($1::text[])
+//          ON CONFLICT (token_address) DO NOTHING",
+//     )
+//     .bind(token_addresses)
+//     .execute(&app.pool)
+//     .await?;
+//     Ok(())
+// }
 
-async fn fetch_missing(app: &AppState, missing: Vec<String>) {
-    match app.bird_eye_client.token_meta_multiple(missing).await {
-        Ok(token_meta_list) if token_meta_list.is_empty() => {
-            info!("birdeye no tokens");
-        }
-        Ok(token_meta_list) => {
-            info!("Fetched token metadata: {:?}", token_meta_list);
-            // Map the token metadata list to a list of Trending records.
-            let trending: Vec<token::Trending> = token_meta_list
-                .into_iter()
-                .map(|tm| token::Trending {
-                    address: tm.address,
-                    decimals: tm.decimals,
-                    logo_uri: Some(tm.logo_uri),
-                    name: tm.name,
-                    symbol: tm.symbol,
-                    volume24h_usd: 0.0, // No volume data in overview
-                    rank: 0,            // No rank data in overview
-                    price: 0.0,
-                })
-                .collect();
-
-            if let Err(e) = crate::token::upsert_token_meta(&app.pool, &trending).await {
-                error!("Failed to upsert token metadata: {:?}", e);
-            }
-        }
-        Err(e) => {
-            tracing::warn!("Failed to fetch token metadata from BirdEye: {:?}", e);
-        }
-    }
-}
+// async fn fetch_missing(app: &AppState, missing: Vec<String>) {
+//     match app.bird_eye_client.token_meta_multiple(missing).await {
+//         Ok(token_meta_list) if token_meta_list.is_empty() => {
+//             info!("birdeye no tokens");
+//         }
+//         Ok(token_meta_list) => {
+//             info!("Fetched token metadata: {:?}", token_meta_list);
+//             // Map the token metadata list to a list of Trending records.
+//             let trending: Vec<token::Trending> = token_meta_list
+//                 .into_iter()
+//                 .map(|tm| token::Trending {
+//                     address: tm.address,
+//                     decimals: tm.decimals,
+//                     logo_uri: Some(tm.logo_uri),
+//                     name: tm.name,
+//                     symbol: tm.symbol,
+//                     volume24h_usd: 0.0, // No volume data in overview
+//                     rank: 0,            // No rank data in overview
+//                     price: 0.0,
+//                 })
+//                 .collect();
+//
+//             if let Err(e) = crate::token::upsert_token_meta(&app.pool, &trending).await {
+//                 error!("Failed to upsert token metadata: {:?}", e);
+//             }
+//         }
+//         Err(e) => {
+//             tracing::warn!("Failed to fetch token metadata from BirdEye: {:?}", e);
+//         }
+//     }
+// }
 
 async fn upsert_transaction(
     pool: &PgPool,

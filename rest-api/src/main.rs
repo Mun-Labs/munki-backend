@@ -36,6 +36,7 @@ async fn main() {
         .route("/health", get(token::health::health))
         .route("/mindshare", get(token::route::mindshare))
         .route("/token", get(token::route::search_token))
+        .route("/token/trending", get(token::route::trending_token))
         .route("/webhook", post(webhook::webhook_handler))
         .route("/vibecheck", get(fearandgreed::route::vibe_check))
         .route("/alphamoves", get(alpha_move::get_mover_transaction))

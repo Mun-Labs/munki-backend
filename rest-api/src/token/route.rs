@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::response::HttpResponse;
-use crate::token::query_top_token_volume_history;
+use crate::token::{query_top_token_volume_history, TokenVolumeHistory};
 use axum::extract::{Query, State};
 use axum::{http::StatusCode, Json};
 use bigdecimal::{BigDecimal, ToPrimitive};
@@ -15,16 +15,17 @@ pub struct HealthyResponse {
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenMindshare {
-    token_address: String,
-    change_percentage: f64,
-    logo_url: String,
+    pub token_address: String,
+    pub change_percentage: f64,
+    pub logo_url: String,
     pub name: String,
     pub symbol: String,
+    pub volume: BigDecimal,
 }
 pub async fn mindshare(
     State(app): State<AppState>,
 ) -> Result<Json<HttpResponse<Vec<TokenMindshare>>>, (StatusCode, String)> {
-    let vol = query_top_token_volume_history(&app.pool, 20)
+    let vol = query_top_token_volume_history(&app.pool, 100)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let total_volume: f64 = vol
@@ -39,6 +40,7 @@ pub async fn mindshare(
             logo_url: v.logo_uri.clone().unwrap_or_default(),
             name: v.name.clone(),
             symbol: v.symbol.clone(),
+            volume: v.volume24h.clone(),
         })
         .collect::<Vec<_>>();
     Ok(Json(HttpResponse {
@@ -120,18 +122,49 @@ impl From<&Token> for TokenResponse {
         }
     }
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrendingTokenResponse {
+    pub token_address: String,
+    pub volume24h: BigDecimal,
+    pub record_date: i64,
+    pub logo_uri: Option<String>,
+    pub symbol: String,
+    pub name: String,
+    pub holder_count: i32,
+}
+
+impl From<&TokenVolumeHistory> for TrendingTokenResponse {
+    fn from(
+        TokenVolumeHistory {
+            token_address,
+            volume24h,
+            record_date,
+            name,
+            symbol,
+            logo_uri,
+        }: &TokenVolumeHistory,
+    ) -> Self {
+        Self {
+            token_address: token_address.clone(),
+            volume24h: volume24h.clone(),
+            record_date: *record_date,
+            name: name.clone(),
+            symbol: symbol.clone(),
+            logo_uri: logo_uri.clone(),
+            holder_count: 0,
+        }
+    }
+}
 pub async fn trending_token(
     State(app): State<AppState>,
-    Query(query): Query<SearchQuery>,
-) -> Result<Json<HttpResponse<Vec<TokenResponse>>>, (StatusCode, String)> {
-    if let Err(validation_errors) = query.validate() {
-        return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
-    }
-    let tokens = search_tokens(&app.pool, &query.q, query.limit, query.offset)
+) -> Result<Json<HttpResponse<Vec<TrendingTokenResponse>>>, (StatusCode, String)> {
+    let tokens = query_top_token_volume_history(&app.pool, 20)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .iter()
-        .map(TokenResponse::from)
+        .map(TrendingTokenResponse::from)
         .collect();
     Ok(Json(HttpResponse {
         code: 200,
@@ -139,7 +172,6 @@ pub async fn trending_token(
         last_updated: Utc::now().timestamp(),
     }))
 }
-
 
 pub async fn search_token(
     State(app): State<AppState>,
@@ -169,7 +201,14 @@ pub async fn search_tokens(
     // Use full-text search by concatenating name and symbol into a tsvector and comparing against a tsquery.
 
     let tokens = sqlx::query_as::<_, Token>(
-        r#"SELECT token_address, name, symbol, image_url as logo_uri, marketcap, price_change24h_percent as price24hchange, current_price FROM tokens WHERE token_address % $1 OR name % $1 OR symbol % $1 LIMIT $2 OFFSET $3"#,
+        r#"
+        SELECT token_address, name, symbol, image_url as logo_uri, marketcap, price_change24h_percent as price24hchange, current_price
+        FROM tokens t
+        WHERE (t.token_address % $1 OR name % $1 OR symbol % $1)
+          and EXISTS(SELECT 1 FROM token_watch WHERE token_watch.token_address = t.token_address)
+        ORDER BY marketcap DESC
+        LIMIT $2 OFFSET $3
+        "#,
     )
         .bind(search)
         .bind(limit)
