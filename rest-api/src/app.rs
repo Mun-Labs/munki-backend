@@ -15,6 +15,9 @@ use axum::{
 };
 use chrono::Utc;
 use envconfig::Envconfig;
+use helius::client::HeliusAsyncSolanaClient;
+use helius::types::Cluster;
+use helius::Helius;
 use http_body_util::BodyExt;
 use reqwest::Client;
 use sqlx::{PgPool, Pool, Postgres};
@@ -23,12 +26,13 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AppState {
     pub version: i32,
     pub bird_eye_client: BirdEyeClient,
     pub alternative_client: AlternativeClient,
     pub pool: Pool<Postgres>,
+    // pub helius: Arc<Helius>,
 }
 const ALTERNATIVE_BASE_URL: &str = "https://api.alternative.me/fng/";
 pub const SOL_ADDRESS: &str = "So11111111111111111111111111111111111111112";
@@ -38,11 +42,14 @@ impl AppState {
     pub async fn new() -> Self {
         init_tracing();
         let BirdeyeConfig { api_key, base_url } = BirdeyeConfig::init_from_env().unwrap();
+        // let helius_api_key: &str = "your_api_key";
+        // let cluster: Cluster= Cluster::MainnetBeta;
         Self {
             version: 0,
             bird_eye_client: BirdEyeClient::new(&base_url, &api_key),
             alternative_client: AlternativeClient::new(ALTERNATIVE_BASE_URL.into(), 31),
             pool: init_pg_pool().await,
+            // helius: Arc::new(Helius::new(api_key, cluster).unwrap()),
         }
     }
 

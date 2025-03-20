@@ -1,9 +1,10 @@
 use axum::{extract::State, Json};
+use futures::future::err;
 use helius::types::TokenTransfer;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{Error, PgPool};
 use std::collections::HashSet;
-use tracing::info;
+use tracing::{error, info};
 
 use crate::app::{AppState, SOL_ADDRESS};
 use crate::token;
@@ -77,7 +78,6 @@ pub async fn webhook_handler(
     info!("Wallets from payload: {:?}", wallets);
 
     // Process each transaction against the wallets retrieved from the database.
-    let mut token_addresses = vec![];
     for transaction in payload {
         if let Some(transfers) = transaction.token_transfers {
             for transfer in transfers {
@@ -111,6 +111,19 @@ pub async fn webhook_handler(
                     continue;
                 }
 
+                let result = token_watch_exists(&app.pool, &transfer.mint).await;
+                match result {
+                    Ok(exists) if !exists => {
+                        info!("skipping due to not in token watch");
+                    }
+                    Ok(_) => {
+                        info!("token {} watch exists", &transfer.mint);
+                    }
+                    Err(e) => {
+                        error!("Failed to check token watch: {:?}", e);
+                    }
+                }
+
                 // Adjust field extraction as needed.
                 let token_address = transfer.mint.clone();
                 let amount = transfer.token_amount.as_f64().unwrap_or_default();
@@ -130,56 +143,82 @@ pub async fn webhook_handler(
                 )
                 .await
                 {
-                    tracing::error!("Failed to upsert transaction: {:?}", e);
+                    error!("Failed to upsert transaction: {:?}", e);
                 }
 
-                if token_address != SOL_ADDRESS {
-                    token_addresses.push(token_address);
-                }
             }
         }
     }
-    match token::token_by_address(&app.pool, token_addresses).await {
-        Err(e) => {
-            tracing::error!("Failed to fetch token data: {:?}", e);
-        }
-        Ok(missing) if missing.is_empty() => {
-            info!("no token to fetch");
-        }
-        Ok(missing) => {
-            // Token doesn't exist or data is stale, fetch from BirdEye
-            match app.bird_eye_client.overview(missing).await {
-                Ok(token_meta_list) if token_meta_list.is_empty() => {
-                    info!("birdeye no tokens");
-                }
-                Ok(token_meta_list) => {
-                    info!("Fetched token metadata: {:?}", token_meta_list);
-                    // Map the token metadata list to a list of Trending records.
-                    let trending: Vec<token::Trending> = token_meta_list
-                        .into_iter()
-                        .map(|tm| token::Trending {
-                            address: tm.address,
-                            decimals: tm.decimals,
-                            logo_uri: Some(tm.logo_uri),
-                            name: tm.name,
-                            symbol: tm.symbol,
-                            volume24h_usd: 0.0, // No volume data in overview
-                            rank: 0,            // No rank data in overview
-                            price: 0.0,
-                        })
-                        .collect();
-
-                    if let Err(e) = crate::token::upsert_token_meta(&app.pool, &trending).await {
-                        tracing::error!("Failed to upsert token metadata: {:?}", e);
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to fetch token metadata from BirdEye: {:?}", e);
-                }
-            }
-        }
-    }
+    // match token::token_by_address(&app.pool, token_addresses).await {
+    //     Err(e) => {
+    //         tracing::error!("Failed to fetch token data: {:?}", e);
+    //     }
+    //     Ok(missing) if missing.is_empty() => {
+    //         info!("no token to fetch");
+    //     }
+    //     Ok(missing) => {
+    //         if let Err(err) = batch_insert_tokens_into_watch(&app, missing.as_slice()).await {
+    //             error!("insert token watch failed: {:?}", err);
+    //         }
+    //     }
+    // }
     "Webhook received"
+}
+
+pub async fn token_watch_exists(pool: &PgPool, token_address: &str) -> Result<bool, sqlx::Error> {
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM token_watch WHERE token_address = $1)")
+            .bind(token_address)
+            .fetch_one(pool)
+            .await?;
+    Ok(exists)
+}
+pub async fn batch_insert_tokens_into_watch(
+    app: &AppState,
+    token_addresses: &[String],
+) -> anyhow::Result<()> {
+    // Using UNNEST to convert the slice to a set of rows for batch insertion.
+    sqlx::query(
+        "INSERT INTO token_watch (token_address)
+         SELECT UNNEST($1::text[])
+         ON CONFLICT (token_address) DO NOTHING",
+    )
+    .bind(token_addresses)
+    .execute(&app.pool)
+    .await?;
+    Ok(())
+}
+
+async fn fetch_missing(app: &AppState, missing: Vec<String>) {
+    match app.bird_eye_client.token_meta_multiple(missing).await {
+        Ok(token_meta_list) if token_meta_list.is_empty() => {
+            info!("birdeye no tokens");
+        }
+        Ok(token_meta_list) => {
+            info!("Fetched token metadata: {:?}", token_meta_list);
+            // Map the token metadata list to a list of Trending records.
+            let trending: Vec<token::Trending> = token_meta_list
+                .into_iter()
+                .map(|tm| token::Trending {
+                    address: tm.address,
+                    decimals: tm.decimals,
+                    logo_uri: Some(tm.logo_uri),
+                    name: tm.name,
+                    symbol: tm.symbol,
+                    volume24h_usd: 0.0, // No volume data in overview
+                    rank: 0,            // No rank data in overview
+                    price: 0.0,
+                })
+                .collect();
+
+            if let Err(e) = crate::token::upsert_token_meta(&app.pool, &trending).await {
+                error!("Failed to upsert token metadata: {:?}", e);
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to fetch token metadata from BirdEye: {:?}", e);
+        }
+    }
 }
 
 async fn upsert_transaction(
@@ -196,10 +235,8 @@ async fn upsert_transaction(
         "INSERT INTO market_movers_transaction
          (signature, token_address, wallet_address, transaction_type, amount, block_time, slot)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (signature) DO UPDATE
-         SET token_address = EXCLUDED.token_address,
-             wallet_address = EXCLUDED.wallet_address,
-             transaction_type = EXCLUDED.transaction_type,
+         ON CONFLICT (signature, wallet_address, token_address) DO UPDATE
+         SET transaction_type = EXCLUDED.transaction_type,
              amount = EXCLUDED.amount,
              block_time = EXCLUDED.block_time,
              slot = EXCLUDED.slot,

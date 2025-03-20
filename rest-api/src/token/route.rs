@@ -3,7 +3,7 @@ use crate::response::HttpResponse;
 use crate::token::query_top_token_volume_history;
 use axum::extract::{Query, State};
 use axum::{http::StatusCode, Json};
-use bigdecimal::ToPrimitive;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::Utc;
 use serde::Serialize;
 
@@ -69,18 +69,91 @@ pub struct Token {
     pub name: String,
     pub symbol: String,
     pub logo_uri: Option<String>,
+    #[serde(rename = "mc")]
+    pub marketcap: Option<BigDecimal>,
+    #[sqlx(rename = "price24hchange")]
+    pub price24hchange: Option<BigDecimal>,
+    #[sqlx(rename = "current_price")]
+    pub price: Option<BigDecimal>,
 }
 
-pub async fn search_token(
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenResponse {
+    pub token_address: String,
+    pub name: String,
+    pub symbol: String,
+    pub logo_uri: Option<String>,
+    #[serde(rename = "mc")]
+    pub marketcap: f64,
+    #[serde(rename = "price24hchange")]
+    pub price24hchange: f64,
+    #[serde(rename = "current_price")]
+    pub price: f64,
+}
+
+impl From<&Token> for TokenResponse {
+    fn from(value: &Token) -> Self {
+        Self {
+            token_address: value.token_address.clone(),
+            name: value.name.clone(),
+            symbol: value.symbol.clone(),
+            logo_uri: value.logo_uri.clone(),
+            marketcap: value
+                .marketcap
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
+            price24hchange: value
+                .price24hchange
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
+            price: value
+                .price
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
+        }
+    }
+}
+pub async fn trending_token(
     State(app): State<AppState>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<HttpResponse<Vec<Token>>>, (StatusCode, String)> {
+) -> Result<Json<HttpResponse<Vec<TokenResponse>>>, (StatusCode, String)> {
     if let Err(validation_errors) = query.validate() {
         return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
     }
     let tokens = search_tokens(&app.pool, &query.q, query.limit, query.offset)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .iter()
+        .map(TokenResponse::from)
+        .collect();
+    Ok(Json(HttpResponse {
+        code: 200,
+        response: tokens,
+        last_updated: Utc::now().timestamp(),
+    }))
+}
+
+
+pub async fn search_token(
+    State(app): State<AppState>,
+    Query(query): Query<SearchQuery>,
+) -> Result<Json<HttpResponse<Vec<TokenResponse>>>, (StatusCode, String)> {
+    if let Err(validation_errors) = query.validate() {
+        return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
+    }
+    let tokens = search_tokens(&app.pool, &query.q, query.limit, query.offset)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .iter()
+        .map(TokenResponse::from)
+        .collect();
     Ok(Json(HttpResponse {
         code: 200,
         response: tokens,
@@ -96,10 +169,11 @@ pub async fn search_tokens(
     // Use full-text search by concatenating name and symbol into a tsvector and comparing against a tsquery.
 
     let tokens = sqlx::query_as::<_, Token>(
-        r#"SELECT token_address, name, symbol, image_url as logo_uri FROM tokens WHERE token_address % $1 OR name % $1 OR symbol % $1 limit $2 offset $3"#,
+        r#"SELECT token_address, name, symbol, image_url as logo_uri, marketcap, price_change24h_percent as price24hchange, current_price FROM tokens WHERE token_address % $1 OR name % $1 OR symbol % $1 LIMIT $2 OFFSET $3"#,
     )
         .bind(search)
-        .bind(limit).bind(offset)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(pool)
         .await?;
     Ok(tokens)

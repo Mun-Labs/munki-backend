@@ -1,3 +1,4 @@
+use crate::token::start_token_fetcher;
 use app::{print_request_response, AppState};
 use axum::routing::{get, post};
 use axum::{middleware, Router};
@@ -38,14 +39,11 @@ async fn main() {
         .route("/webhook", post(webhook::webhook_handler))
         .route("/vibecheck", get(fearandgreed::route::vibe_check))
         .route("/alphamoves", get(alpha_move::get_mover_transaction))
-        .route(
-            "/fearandgreed",
-            get(fearandgreed::route::get_fear_and_greed),
-        )
         .with_state(app_state)
         .layer(middleware::from_fn(print_request_response))
         .layer(cors);
     AppState::start_worker(shared_state.clone()).await;
+    start_token_fetcher(shared_state.clone()).await;
 
     let app = r.nest("/api/v1", router);
     let port = env::var("PORT").expect("PORT environment variable not set");

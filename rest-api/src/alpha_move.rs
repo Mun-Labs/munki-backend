@@ -28,6 +28,7 @@ pub struct MoverTransaction {
     // New fields from market_mover table
     #[serde(rename = "alphaGroup")]
     pub mover_role: String,
+    #[serde(rename = "name")]
     pub mover_name: String,
 }
 
@@ -51,10 +52,17 @@ pub async fn get_mover_transaction(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Execute query to count total rows in market_movers_transaction.
-    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM market_movers_transaction")
-        .fetch_one(&app.pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let total: (i64,) = sqlx::query_as(
+        "
+    SELECT COUNT(*)
+    FROM market_movers_transaction mm
+    INNER JOIN market_mover m ON mm.wallet_address = m.wallet_address
+    WHERE EXISTS(SELECT 1 FROM token_watch WHERE token_watch.token_address = mm.token_address)
+    ",
+    )
+    .fetch_one(&app.pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(HttpPaginationResponse {
         code: 200,
@@ -70,7 +78,8 @@ pub async fn fetch_mover_transactions(
     offset: i64,
 ) -> Result<Vec<MoverTransaction>, sqlx::Error> {
     let transactions = sqlx::query_as::<_, MoverTransaction>(
-        "SELECT
+        "
+SELECT
             mm.signature,
             mm.token_address,
             mm.wallet_address,
@@ -84,9 +93,10 @@ pub async fn fetch_mover_transactions(
             m.role AS mover_role,
             m.name AS mover_name
          FROM market_movers_transaction mm
-         LEFT JOIN tokens t ON mm.token_address = t.token_address
          INNER JOIN market_mover m ON mm.wallet_address = m.wallet_address
-         ORDER BY mm.slot, mm.block_time
+         LEFT JOIN tokens t ON mm.token_address = t.token_address
+         WHERE EXISTS(SELECT 1 FROM token_watch WHERE token_watch.token_address = mm.token_address)
+         ORDER BY mm.slot DESC
          LIMIT $1 OFFSET $2",
     )
     .bind(limit)

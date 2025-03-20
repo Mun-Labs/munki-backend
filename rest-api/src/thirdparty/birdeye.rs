@@ -1,5 +1,5 @@
 use crate::price::{PriceSdk, TimeFilters};
-use crate::token::{TokenMetadata, TokenSdk, Trending};
+use crate::token::{TokenMetadata, TokenOverview, TokenSdk, Trending};
 use anyhow::Error;
 use chrono::{Duration, Timelike, Utc};
 use reqwest::Client;
@@ -96,10 +96,11 @@ impl TokenSdk for BirdEyeClient {
         Ok(body.data.tokens)
     }
 
-    async fn overview(&self, addresses: Vec<String>) -> Result<Vec<TokenMetadata>, Error> {
+    async fn token_meta_multiple(
+        &self,
+        addresses: Vec<String>,
+    ) -> Result<Vec<TokenMetadata>, Error> {
         let url = format!("{}/defi/v3/token/meta-data/multiple", self.base_url);
-        println!("{}", url);
-        println!("{}", addresses.join(","));
         let resp = self
             .client
             .get(url)
@@ -123,6 +124,28 @@ impl TokenSdk for BirdEyeClient {
             .data;
 
         Ok(resp.into_iter().map(|(_, a)| a).collect())
+    }
+
+    async fn overview(&self, address: &str) -> Result<TokenOverview, anyhow::Error> {
+        let url = format!("{}/defi/token_overview", self.base_url);
+        let resp = self
+            .client
+            .get(url)
+            .query(&[("address", address)])
+            .header("X-API-KEY", &self.api_key)
+            .header("accept", "application/json")
+            .header("x-chain", "solana")
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Request failed with status: {}",
+                resp.status()
+            ));
+        }
+
+        Ok(resp.json::<BirdEyeResponse<TokenOverview>>().await?.data)
     }
 }
 
