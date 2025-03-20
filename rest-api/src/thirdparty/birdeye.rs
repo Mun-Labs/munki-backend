@@ -1,5 +1,5 @@
 use crate::price::{PriceSdk, TimeFilters};
-use crate::token::{TokenMetadata, TokenOverview, TokenSdk, Trending};
+use crate::token::{TokenHolder, TokenMetadata, TokenOverview, TokenSdk, Trending};
 use anyhow::Error;
 use chrono::{Duration, Timelike, Utc};
 use reqwest::Client;
@@ -43,6 +43,12 @@ pub struct Items {
 #[serde(rename_all = "camelCase")]
 pub struct PriceHistory {
     pub items: Vec<Items>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemsResponse<T> {
+    pub items: Vec<T>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -146,6 +152,34 @@ impl TokenSdk for BirdEyeClient {
         }
 
         Ok(resp.json::<BirdEyeResponse<TokenOverview>>().await?.data)
+    }
+
+    async fn holders(&self, address: &str) -> Result<Vec<TokenHolder>, Error> {
+        let url = format!("{}/defi/v3/token/holder", self.base_url);
+        let resp = self
+            .client
+            .get(url)
+            .query(&[("address", address), ("limit", "100"), ("offset", "0")])
+            .header("X-API-KEY", &self.api_key)
+            .header("accept", "application/json")
+            .header("x-chain", "solana")
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Request failed with status: {}",
+                resp.status()
+            ));
+        }
+
+        let resp = resp.text().await?;
+        println!("{}", resp);
+
+        let body = serde_json::from_str::<BirdEyeResponse<ItemsResponse<TokenHolder>>>(&resp)?;
+        info!("fetch holders: {body:?}");
+        Ok(body.data.items)
+        // Ok(resp.json::<BirdEyeResponse<Vec<TokenHolder>>>().await?.data)
     }
 }
 

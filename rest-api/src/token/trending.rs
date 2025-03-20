@@ -48,6 +48,16 @@ pub struct TokenOverview {
     pub holder: Option<f64>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TokenHolder {
+    pub amount: String,
+    pub decimals: i32,
+    pub mint: String,
+    pub owner: String,
+    pub token_account: String,
+    pub ui_amount: f64,
+}
+
 pub trait TokenSdk {
     async fn get_trending(&self, offset: i32, limit: i32) -> Result<Vec<Trending>, anyhow::Error>;
     async fn token_meta_multiple(
@@ -55,6 +65,8 @@ pub trait TokenSdk {
         addresses: Vec<String>,
     ) -> Result<Vec<TokenMetadata>, anyhow::Error>;
     async fn overview(&self, address: &str) -> Result<TokenOverview, anyhow::Error>;
+
+    async fn holders(&self, address: &str) -> Result<Vec<TokenHolder>, anyhow::Error>;
 }
 
 pub async fn upsert_token_meta(
