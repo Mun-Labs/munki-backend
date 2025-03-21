@@ -9,7 +9,10 @@ pub struct Config {
 #[derive(Envconfig)]
 pub struct BirdeyeConfig {
     #[envconfig(from = "BIRDEYE_API_KEY")]
-    pub api_key: String,
+    pub birdeye_api_key: String,
+
+    #[envconfig(from = "MONI_API_KEY")]
+    pub moni_api_key: String,
 
     #[envconfig(from = "BIRDEYE_API_URL")]
     pub base_url: String,

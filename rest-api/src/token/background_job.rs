@@ -1,26 +1,15 @@
 use crate::app::AppState;
-use crate::token::{TokenHolder, TokenOverview, TokenSdk};
+use crate::token::{TokenOverview, TokenSdk};
 use anyhow::Result;
 use log::{error, info};
 use sqlx::types::Json;
 use sqlx::{Pool, Postgres};
 use std::sync::Arc;
 use std::time::Duration;
-use futures::future::err;
 use tokio::time::sleep;
 
-#[derive(Debug)]
-pub struct TokenData {
-    pub token_address: String,
-    pub name: String,
-    pub symbol: String,
-    pub logo_uri: Option<String>,
-}
-
 #[derive(Debug, sqlx::FromRow)]
-struct TokenRow {
-    token_address: String,
-}
+struct TokenRow {}
 
 pub async fn start_token_fetcher(app_state: Arc<AppState>) {
     tokio::spawn(async move {
@@ -39,17 +28,23 @@ async fn process_token_watch(app: &Arc<AppState>) -> Result<()> {
     let batch_size = 50; // adjust as needed
     let token_addresses = get_token_watch_due(pool, batch_size).await?;
     for token_address in token_addresses {
-        let token_data = fetch_token_details(&app, &token_address).await.map_err(|e| {
-            error!("Error fetching token details for {}: {}", token_address, e);
-            e
-        })?;
+        let token_data = fetch_token_details(app, &token_address)
+            .await
+            .map_err(|e| {
+                error!("Error fetching token details for {}: {}", token_address, e);
+                e
+            })?;
         info!("Token details: {:?}", token_data);
         insert_token(pool, &token_data).await?;
         info!("Token address {} is refreshed", token_address);
-        let holders = app.bird_eye_client.holders(&token_address).await.map_err(|e| {
-            error!("Error fetching holding for {}: {}", token_address, e);
-            e
-        })?;
+        let holders = app
+            .bird_eye_client
+            .holders(&token_address)
+            .await
+            .map_err(|e| {
+                error!("Error fetching holding for {}: {}", token_address, e);
+                e
+            })?;
         let count =
             query_in_mover(&app.pool, holders.iter().map(|a| a.owner.clone()).collect()).await?;
         upsert_alpha_metric(&app.pool, &token_address, count).await?;
@@ -57,6 +52,46 @@ async fn process_token_watch(app: &Arc<AppState>) -> Result<()> {
         renew_token_in_watch(pool, &token_address).await?;
         sleep(Duration::from_millis(1000)).await;
     }
+    Ok(())
+}
+
+async fn upsert_smart_holder_metric(
+    pool: &Pool<Postgres>,
+    address: &str,
+    top_holders: f64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO alpha_move_token_metric (token_address, top_smart_wallets_holders)
+        VALUES ($1, $2)
+        ON CONFLICT (token_address) DO UPDATE
+        SET top_smart_wallets_holders = EXCLUDED.top_smart_wallets_holders
+        "#,
+    )
+    .bind(address)
+    .bind(top_holders)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn upsert_alpha_metric_munscore(
+    pool: &Pool<Postgres>,
+    address: &str,
+    top_holders: f64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO alpha_move_token_metric (token_address, mun_score)
+        VALUES ($1, $2)
+        ON CONFLICT (token_address) DO UPDATE
+        SET top_smart_wallets_holders = EXCLUDED.top_smart_wallets_holders
+        "#,
+    )
+    .bind(address)
+    .bind(top_holders)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -71,12 +106,12 @@ async fn upsert_alpha_metric(
         VALUES ($1, $2)
         ON CONFLICT (token_address) DO UPDATE
         SET top_smart_wallets_holders = EXCLUDED.top_smart_wallets_holders
-        "#
+        "#,
     )
-        .bind(address)
-        .bind(top_holders)
-        .execute(pool)
-        .await?;
+    .bind(address)
+    .bind(top_holders)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -145,13 +180,13 @@ async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<()
     .bind(&token.name)
     .bind(&token.symbol)
     .bind(&token.logo_uri)
-    .bind(&token.total_supply)
-    .bind(&token.marketcap)
-    .bind(&token.history24h_price)
-    .bind(&token.price_change24h_percent)
-    .bind(&token.price)
-        .bind(token.decimals as i64)
-        .bind(Json(&token.extensions))
+    .bind(token.total_supply)
+    .bind(token.marketcap)
+    .bind(token.history24h_price)
+    .bind(token.price_change24h_percent)
+    .bind(token.price)
+    .bind(token.decimals as i64)
+    .bind(Json(&token.extensions))
     .execute(pool)
     .await?;
     Ok(())

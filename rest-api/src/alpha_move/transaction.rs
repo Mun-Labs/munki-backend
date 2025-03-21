@@ -1,13 +1,6 @@
 use crate::app::AppState;
-use crate::response::HttpPaginationResponse;
-use axum::extract::{Query, State};
-use axum::http::StatusCode;
-use axum::Json;
 use bigdecimal::BigDecimal;
-use chrono::Utc;
-use serde::Deserialize;
 use sqlx::{Pool, Postgres};
-use validator::Validate;
 
 #[derive(serde::Serialize, Debug, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -32,29 +25,9 @@ pub struct MoverTransaction {
     pub mover_name: String,
 }
 
-#[derive(Deserialize, Validate)]
-pub struct PaginationQuery {
-    #[validate(range(min = 1, max = 100))]
-    pub limit: i64,
-    #[validate(range(min = 0))]
-    pub offset: i64,
-}
-pub async fn get_mover_transaction(
-    State(app): State<AppState>,
-    Query(query): Query<PaginationQuery>,
-) -> Result<Json<HttpPaginationResponse<Vec<MoverTransaction>>>, (StatusCode, String)> {
-    if let Err(validation_errors) = query.validate() {
-        return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
-    }
-
-    let transactions = fetch_mover_transactions(&app.pool, query.limit, query.offset)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // Execute query to count total rows in market_movers_transaction.
-    let total: (i64,) = sqlx::query_as(
-        "
-    SELECT COUNT(*)
+pub async fn count_mover_transaction(app: &AppState) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT COUNT(*)
     FROM market_movers_transaction mm
     INNER JOIN market_mover m ON mm.wallet_address = m.wallet_address
     WHERE EXISTS(SELECT 1 FROM token_watch WHERE token_watch.token_address = mm.token_address)
@@ -62,14 +35,6 @@ pub async fn get_mover_transaction(
     )
     .fetch_one(&app.pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    Ok(Json(HttpPaginationResponse {
-        code: 200,
-        response: transactions,
-        last_updated: Utc::now().timestamp(),
-        total: total.0,
-    }))
 }
 
 pub async fn fetch_mover_transactions(
