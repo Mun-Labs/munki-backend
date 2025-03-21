@@ -1,9 +1,11 @@
 use crate::app::AppState;
-use crate::token::{TokenHolder, TokenOverview, TokenSdk};
+use crate::thirdparty::MunScoreSdk;
+use crate::token::{TokenOverview, TokenSdk};
 use anyhow::Result;
 use log::{error, info};
 use sqlx::types::Json;
 use sqlx::{Pool, Postgres};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use futures::future::err;
@@ -39,24 +41,117 @@ async fn process_token_watch(app: &Arc<AppState>) -> Result<()> {
     let batch_size = 50; // adjust as needed
     let token_addresses = get_token_watch_due(pool, batch_size).await?;
     for token_address in token_addresses {
-        let token_data = fetch_token_details(&app, &token_address).await.map_err(|e| {
+        if let Ok(token_data) = fetch_token_details(app, &token_address).await.map_err(|e| {
             error!("Error fetching token details for {}: {}", token_address, e);
             e
-        })?;
-        info!("Token details: {:?}", token_data);
-        insert_token(pool, &token_data).await?;
-        info!("Token address {} is refreshed", token_address);
-        let holders = app.bird_eye_client.holders(&token_address).await.map_err(|e| {
-            error!("Error fetching holding for {}: {}", token_address, e);
-            e
-        })?;
-        let count =
-            query_in_mover(&app.pool, holders.iter().map(|a| a.owner.clone()).collect()).await?;
-        upsert_alpha_metric(&app.pool, &token_address, count).await?;
-        info!("Found {} holders in market_mover", count);
+        }) {
+            info!("Token details: {:?}", token_data);
+            insert_token(pool, &token_data).await?;
+
+            if let Ok(holders) = app
+                .bird_eye_client
+                .holders(&token_address)
+                .await
+                .map_err(|e| {
+                    error!("Error fetching holding for {}: {}", token_address, e);
+                    e
+                })
+            {
+                let count =
+                    query_in_mover(&app.pool, holders.iter().map(|a| a.owner.clone()).collect())
+                        .await?;
+                match upsert_alpha_metric(&app.pool, &token_address, count).await {
+                    Err(err) => error!(
+                        "Error upserting alpha metric for {}: {}",
+                        token_address, err
+                    ),
+                    _ => info!("Found {} holders in market_mover", count),
+                };
+            }
+            if let Some(username) = extract_twitter_username(token_data.extensions) {
+                info!("Fetching mun score for {}", username);
+                if let Ok(mun_score) = app.moni_client.get_mun_score(&username).await.map_err(|e| {
+                    error!("Error fetching mun score for {}: {}", token_address, e);
+                    e
+                }) {
+                    info!("Mun score: {mun_score:?}");
+                    match upsert_alpha_metric_munscore(
+                        pool,
+                        &token_address,
+                        mun_score.smart_engagement.followers_score as f64,
+                        mun_score.smart_engagement.smart_followers_count,
+                    )
+                    .await
+                    {
+                        Ok(_) => info!("Mun score {username} of {token_address} is updated"),
+                        Err(err) => error!(
+                            "Error upserting mun score for {username} of {token_address}: {err}"
+                        ),
+                    };
+                }
+            }
+        };
         renew_token_in_watch(pool, &token_address).await?;
-        sleep(Duration::from_millis(1000)).await;
+        info!("Token address {} is refreshed", token_address);
+        sleep(Duration::from_millis(5000)).await;
     }
+    Ok(())
+}
+
+const TWTITTER_URL: &str = "https://twitter.com/";
+const X_URL: &str = "https://x.com/";
+
+fn extract_twitter_username(extensions: Option<HashMap<String, Option<String>>>) -> Option<String> {
+    extensions
+        .and_then(|ext| ext.get("twitter").cloned())
+        .and_then(|url| {
+            let url = url?;
+            url.strip_prefix(TWTITTER_URL)
+                .or_else(|| url.strip_prefix(X_URL))
+                .map(|stripped| stripped.split('/').next().unwrap_or_default().to_string())
+        })
+}
+
+async fn upsert_smart_holder_metric(
+    pool: &Pool<Postgres>,
+    address: &str,
+    top_holders: f64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO alpha_move_token_metric (token_address, top_smart_wallets_holders)
+        VALUES ($1, $2)
+        ON CONFLICT (token_address) DO UPDATE
+        SET top_smart_wallets_holders = EXCLUDED.top_smart_wallets_holders
+        "#,
+    )
+    .bind(address)
+    .bind(top_holders)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn upsert_alpha_metric_munscore(
+    pool: &Pool<Postgres>,
+    address: &str,
+    munscore: f64,
+    smart_followers_count: u64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO alpha_move_token_metric (token_address, mun_score, smart_followers)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (token_address) DO UPDATE
+        SET mun_score = EXCLUDED.mun_score,
+        smart_followers = EXCLUDED.smart_followers
+        "#,
+    )
+    .bind(address)
+    .bind(munscore)
+    .bind(smart_followers_count as i64)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
