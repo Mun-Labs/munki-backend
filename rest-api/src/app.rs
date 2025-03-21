@@ -3,7 +3,7 @@ use crate::fearandgreed::{batch_insert_fear_and_greed, FearAndGreed, FearAndGree
 use crate::price::{self, PriceSdk, TimeFilters};
 use crate::thirdparty::alternative_api::AlternativeClient;
 use crate::thirdparty::defi::DefiClient;
-use crate::thirdparty::BirdEyeClient;
+use crate::thirdparty::{BirdEyeClient, MoniClient};
 use crate::token::TokenSdk;
 use crate::{time_util, token, volume};
 use axum::{
@@ -31,6 +31,7 @@ pub struct AppState {
     pub version: i32,
     pub bird_eye_client: BirdEyeClient,
     pub alternative_client: AlternativeClient,
+    pub moni_client: Arc<MoniClient>,
     pub pool: Pool<Postgres>,
     // pub helius: Arc<Helius>,
 }
@@ -41,14 +42,20 @@ pub const SOLANA: &str = "solana";
 impl AppState {
     pub async fn new() -> Self {
         init_tracing();
-        let BirdeyeConfig { api_key, base_url } = BirdeyeConfig::init_from_env().unwrap();
+        let BirdeyeConfig {
+            birdeye_api_key,
+            base_url,
+            moni_api_key,
+        } = BirdeyeConfig::init_from_env().unwrap();
         // let helius_api_key: &str = "your_api_key";
         // let cluster: Cluster= Cluster::MainnetBeta;
+        let client = Client::new();
         Self {
             version: 0,
-            bird_eye_client: BirdEyeClient::new(&base_url, &api_key),
+            bird_eye_client: BirdEyeClient::new(&base_url, &birdeye_api_key),
             alternative_client: AlternativeClient::new(ALTERNATIVE_BASE_URL.into(), 31),
             pool: init_pg_pool().await,
+            moni_client: Arc::new(MoniClient::new(moni_api_key, client.clone())),
             // helius: Arc::new(Helius::new(api_key, cluster).unwrap()),
         }
     }

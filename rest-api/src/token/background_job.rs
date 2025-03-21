@@ -8,21 +8,10 @@ use sqlx::{Pool, Postgres};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use futures::future::err;
 use tokio::time::sleep;
 
-#[derive(Debug)]
-pub struct TokenData {
-    pub token_address: String,
-    pub name: String,
-    pub symbol: String,
-    pub logo_uri: Option<String>,
-}
-
 #[derive(Debug, sqlx::FromRow)]
-struct TokenRow {
-    token_address: String,
-}
+struct TokenRow {}
 
 pub async fn start_token_fetcher(app_state: Arc<AppState>) {
     tokio::spawn(async move {
@@ -166,12 +155,12 @@ async fn upsert_alpha_metric(
         VALUES ($1, $2)
         ON CONFLICT (token_address) DO UPDATE
         SET top_smart_wallets_holders = EXCLUDED.top_smart_wallets_holders
-        "#
+        "#,
     )
-        .bind(address)
-        .bind(top_holders)
-        .execute(pool)
-        .await?;
+    .bind(address)
+    .bind(top_holders)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -240,13 +229,13 @@ async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<()
     .bind(&token.name)
     .bind(&token.symbol)
     .bind(&token.logo_uri)
-    .bind(&token.total_supply)
-    .bind(&token.marketcap)
-    .bind(&token.history24h_price)
-    .bind(&token.price_change24h_percent)
-    .bind(&token.price)
-        .bind(token.decimals as i64)
-        .bind(Json(&token.extensions))
+    .bind(token.total_supply)
+    .bind(token.marketcap)
+    .bind(token.history24h_price)
+    .bind(token.price_change24h_percent)
+    .bind(token.price)
+    .bind(token.decimals as i64)
+    .bind(Json(&token.extensions))
     .execute(pool)
     .await?;
     Ok(())

@@ -15,7 +15,7 @@ pub mod jobs;
 mod market_mover;
 mod price;
 mod response;
-pub mod thirdparty;
+mod thirdparty;
 mod time_util;
 mod token;
 pub mod volume;
