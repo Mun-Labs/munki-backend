@@ -174,12 +174,9 @@ impl TokenSdk for BirdEyeClient {
         }
 
         let resp = resp.text().await?;
-        println!("{}", resp);
 
         let body = serde_json::from_str::<BirdEyeResponse<ItemsResponse<TokenHolder>>>(&resp)?;
-        info!("fetch holders: {body:?}");
         Ok(body.data.items)
-        // Ok(resp.json::<BirdEyeResponse<Vec<TokenHolder>>>().await?.data)
     }
 }
 

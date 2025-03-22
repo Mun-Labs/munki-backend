@@ -1,9 +1,7 @@
 use crate::alpha_move::token_score::TokenMetric;
-use crate::alpha_move::transaction::MoverTransaction;
 use crate::alpha_move::{token_score, transaction};
 use crate::app::AppState;
 use crate::response::HttpPaginationResponse;
-use crate::token::TokenResponse;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
@@ -96,7 +94,7 @@ pub async fn get_mover_transaction(
             .await
             .map(|a| {
                 a.iter()
-                    .map(|a| TokenScoreResponse::from(a))
+                    .map(TokenScoreResponse::from)
                     .map(|a| (a.token_address.clone(), a))
                     .collect()
             })

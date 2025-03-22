@@ -57,26 +57,42 @@ async fn process_token_watch(app: &Arc<AppState>) -> Result<()> {
                     _ => info!("Found {} holders in market_mover", count),
                 };
             }
-            if let Some(username) = extract_twitter_username(token_data.extensions) {
-                info!("Fetching mun score for {}", username);
-                if let Ok(mun_score) = app.moni_client.get_mun_score(&username).await.map_err(|e| {
-                    error!("Error fetching mun score for {}: {}", token_address, e);
+
+            if check_if_exists_munscore(pool, &token_address)
+                .await.map_err(|e| {
+                    error!("Error checking if mun score exists for {}: {}", token_address, e);
                     e
-                }) {
-                    info!("Mun score: {mun_score:?}");
-                    match upsert_alpha_metric_munscore(
-                        pool,
-                        &token_address,
-                        mun_score.smart_engagement.followers_score as f64,
-                        mun_score.smart_engagement.smart_followers_count,
-                    )
-                    .await
+                })?
+                .is_none()
+            {
+                if let Some(username) = extract_twitter_username(token_data.extensions) {
+                    info!("Fetching mun score for {}", username);
+                    if let Ok(mun_score) =
+                        app.moni_client.get_mun_score(&username).await.map_err(|e| {
+                            error!("Error fetching mun score for {}: {}", token_address, e);
+                            e
+                        })
                     {
-                        Ok(_) => info!("Mun score {username} of {token_address} is updated"),
-                        Err(err) => error!(
+                        info!("Mun score: {mun_score:?}");
+                        match upsert_alpha_metric_munscore(
+                            pool,
+                            &token_address,
+                            mun_score.smart_engagement.followers_score as f64,
+                            mun_score.smart_engagement.smart_followers_count,
+                        )
+                        .await
+                        {
+                            Ok(_) => info!("Mun score {username} of {token_address} is updated"),
+                            Err(err) => error!(
                             "Error upserting mun score for {username} of {token_address}: {err}"
                         ),
-                    };
+                        };
+                    } else {
+                        mark_failed_munscore(pool, &token_address).await.map_err(|e| {
+                            error!("Error marking mun score as failed for {}: {}", token_address, e);
+                            e
+                        })?;
+                    }
                 }
             }
         };
@@ -85,6 +101,28 @@ async fn process_token_watch(app: &Arc<AppState>) -> Result<()> {
         sleep(Duration::from_millis(5000)).await;
     }
     Ok(())
+}
+async fn mark_failed_munscore(
+    pool: &Pool<Postgres>,
+    token_address: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE alpha_move_token_metric SET mun_score = -1 WHERE token_address = $1")
+        .bind(token_address)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+async fn check_if_exists_munscore(
+    pool: &Pool<Postgres>,
+    token_address: &str,
+) -> Result<Option<bigdecimal::BigDecimal>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT mun_score FROM alpha_move_token_metric WHERE token_address = $1 and (mun_score > 0 or mun_score <= -1)",
+    )
+    .bind(token_address)
+    .fetch_optional(pool)
+    .await
 }
 
 const TWTITTER_URL: &str = "https://twitter.com/";

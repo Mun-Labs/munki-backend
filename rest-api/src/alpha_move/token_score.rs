@@ -19,7 +19,7 @@ pub async fn fetch_token_metrics_by_addresses(
     sqlx::query_as::<_, TokenMetric>(
         "SELECT
              token_address,
-             mun_score,
+             GREATEST(mun_score, 0::numeric) as mun_score,
              top_fresh_wallet_holders,
              top_smart_wallets_holders,
              smart_followers,
