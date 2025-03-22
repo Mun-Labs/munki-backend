@@ -1,5 +1,6 @@
 use crate::app::AppState;
 use crate::response::HttpResponse;
+use crate::time_util;
 use crate::token::{query_top_token_volume_history, TokenVolumeHistory};
 use axum::extract::{Query, State};
 use axum::{http::StatusCode, Json};
@@ -55,6 +56,8 @@ use anyhow::Result;
 use serde::Deserialize;
 use sqlx::{Pool, Postgres};
 use validator::Validate;
+
+use super::query_top_token_volume_history_by_date;
 
 #[derive(Deserialize, Validate)]
 pub struct SearchQuery {
@@ -160,12 +163,16 @@ impl From<&TokenVolumeHistory> for TrendingTokenResponse {
 pub async fn trending_token(
     State(app): State<AppState>,
 ) -> Result<Json<HttpResponse<Vec<TrendingTokenResponse>>>, (StatusCode, String)> {
-    let tokens = query_top_token_volume_history(&app.pool, 20)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .iter()
-        .map(TrendingTokenResponse::from)
-        .collect();
+    let tokens = query_top_token_volume_history_by_date(
+        &app.pool,
+        20,
+        time_util::get_start_of_day(Utc::now()).timestamp(),
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .iter()
+    .map(TrendingTokenResponse::from)
+    .collect();
     Ok(Json(HttpResponse {
         code: 200,
         response: tokens,

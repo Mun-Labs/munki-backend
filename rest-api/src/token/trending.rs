@@ -135,6 +135,31 @@ pub struct TokenVolumeHistory {
     pub logo_uri: Option<String>,
 }
 
+pub async fn query_top_token_volume_history_by_date(
+    pool: &Pool<Postgres>,
+    limit: i64,
+    timestamp: i64,
+) -> anyhow::Result<Vec<TokenVolumeHistory>> {
+    let records = sqlx::query_as::<_, TokenVolumeHistory>(
+        r#"
+        SELECT tvh.token_address,
+        tvh.volume24h,
+        tvh.record_date,
+        t.image_url AS logo_uri,
+        t.name as name,
+        t.symbol as symbol
+        FROM token_volume_history tvh
+        INNER JOIN tokens t ON t.token_address = tvh.token_address
+        WHERE record_date = 1742428800
+        ORDER BY tvh.volume24h DESC LIMIT $1"#,
+    )
+    .bind(limit)
+    .bind(timestamp)
+    .fetch_all(pool)
+    .await?;
+    Ok(records)
+}
+
 pub async fn query_top_token_volume_history(
     pool: &Pool<Postgres>,
     limit: i64,
@@ -156,6 +181,7 @@ pub async fn query_top_token_volume_history(
     .await?;
     Ok(records)
 }
+
 pub async fn token_by_address(
     pool: &Pool<Postgres>,
     addresses: Vec<String>,
