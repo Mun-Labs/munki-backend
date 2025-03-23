@@ -40,6 +40,7 @@ pub struct MoverTransactionResponse {
     #[serde(rename = "name")]
     pub mover_name: String,
     pub token: Option<TokenScoreResponse>,
+    pub decimal: i32,
 }
 
 #[derive(Serialize, Clone)]
@@ -120,6 +121,7 @@ pub async fn get_mover_transaction(
             mover_role: a.mover_role.clone(),
             mover_name: a.mover_name.clone(),
             token: token_metrics.get(&a.token_address).cloned(),
+            decimal: a.decimals,
         })
         .collect();
 

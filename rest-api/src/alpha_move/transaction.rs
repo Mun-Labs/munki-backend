@@ -23,6 +23,7 @@ pub struct MoverTransaction {
     pub mover_role: String,
     #[serde(rename = "name")]
     pub mover_name: String,
+    pub decimals: i32,
 }
 
 pub async fn count_mover_transaction(app: &AppState) -> Result<i64, sqlx::Error> {
@@ -44,7 +45,7 @@ pub async fn fetch_mover_transactions(
 ) -> Result<Vec<MoverTransaction>, sqlx::Error> {
     let transactions = sqlx::query_as::<_, MoverTransaction>(
         "
-SELECT
+        SELECT
             mm.signature,
             mm.token_address,
             mm.wallet_address,
@@ -55,6 +56,7 @@ SELECT
             mm.additional,
             t.name AS token_name,
             t.symbol AS token_symbol,
+            t.decimals AS decimals,
             m.role AS mover_role,
             m.name AS mover_name
          FROM market_movers_transaction mm
