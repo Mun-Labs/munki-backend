@@ -211,8 +211,7 @@ pub async fn search_tokens(
         r#"
         SELECT token_address, name, symbol, image_url as logo_uri, marketcap, price_change24h_percent as price24hchange, current_price
         FROM tokens t
-        WHERE (t.token_address % $1 OR name % $1 OR symbol % $1)
-          and EXISTS(SELECT 1 FROM token_watch WHERE token_watch.token_address = t.token_address)
+        WHERE t.token_address % $1 OR name % $1 OR symbol % $1
         ORDER BY marketcap DESC
         LIMIT $2 OFFSET $3
         "#,

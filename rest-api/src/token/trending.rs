@@ -150,7 +150,7 @@ pub async fn query_top_token_volume_history_by_date(
         t.symbol as symbol
         FROM token_volume_history tvh
         INNER JOIN tokens t ON t.token_address = tvh.token_address
-        WHERE record_date = 1742428800
+        WHERE record_date = $2
         ORDER BY tvh.volume24h DESC LIMIT $1"#,
     )
     .bind(limit)
@@ -165,16 +165,20 @@ pub async fn query_top_token_volume_history(
     limit: i64,
 ) -> anyhow::Result<Vec<TokenVolumeHistory>> {
     let records = sqlx::query_as::<_, TokenVolumeHistory>(
-        r#"SELECT tvh.token_address,
-                  tvh.volume24h,
-                  tvh.record_date,
-                  t.image_url AS logo_uri,
-                  t.name as name,
-                  t.symbol as symbol
-           FROM token_volume_history tvh
-           INNER JOIN tokens t ON t.token_address = tvh.token_address
-           ORDER BY tvh.volume24h DESC
-           LIMIT $1"#,
+        r#"
+        with tvh as (SELECT token_address, max(record_date) as max_record_date, sum(volume24h) as total_volume24h
+            FROM token_volume_history
+            WHERE record_date > (EXTRACT(EPOCH FROM NOW()) - 86400 * 2)
+            GROUP BY token_address
+            LIMIT 100)
+        SELECT tvh.token_address,
+        tvh.total_volume24h as volume24h,
+        tvh.max_record_date as record_date,
+        t.image_url         AS logo_uri,
+        t.name              as name,
+        t.symbol            as symbol
+        FROM tvh INNER JOIN tokens t
+        ON t.token_address = tvh.token_address LIMIT $1"#,
     )
     .bind(limit)
     .fetch_all(pool)
