@@ -36,6 +36,7 @@ pub struct MoverTransactionResponse {
     pub token_name: Option<String>,
     pub token_symbol: Option<String>,
     pub token_logo: Option<String>,
+    pub total_supply: BigDecimal,
     // New fields from market_mover table
     #[serde(rename = "alphaGroup")]
     pub mover_role: String,
@@ -126,6 +127,7 @@ pub async fn get_mover_transaction(
             token: token_metrics.get(&a.token_address).cloned(),
             decimal: a.decimals,
             token_logo: a.token_logo.clone(),
+            total_supply: a.total_supply.clone(),
         })
         .collect();
 

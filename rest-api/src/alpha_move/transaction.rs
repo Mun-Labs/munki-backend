@@ -18,6 +18,7 @@ pub struct MoverTransaction {
     #[serde(rename = "coinName")]
     pub token_name: Option<String>,
     pub token_symbol: Option<String>,
+    pub total_supply: BigDecimal,
     // New fields from market_mover table
     #[serde(rename = "alphaGroup")]
     pub mover_role: String,
@@ -59,6 +60,7 @@ pub async fn fetch_mover_transactions(
             t.symbol AS token_symbol,
             t.decimals AS decimals,
             t.image_url AS token_logo,
+            t.total_supply AS total_supply,
             m.role AS mover_role,
             m.name AS mover_name
          FROM market_movers_transaction mm
