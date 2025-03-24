@@ -24,6 +24,7 @@ pub struct MoverTransaction {
     #[serde(rename = "name")]
     pub mover_name: String,
     pub decimals: i32,
+    pub token_logo: Option<String>,
 }
 
 pub async fn count_mover_transaction(app: &AppState) -> Result<i64, sqlx::Error> {
@@ -57,6 +58,7 @@ pub async fn fetch_mover_transactions(
             t.name AS token_name,
             t.symbol AS token_symbol,
             t.decimals AS decimals,
+            t.image_url AS token_logo,
             m.role AS mover_role,
             m.name AS mover_name
          FROM market_movers_transaction mm

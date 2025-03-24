@@ -20,6 +20,7 @@ pub struct PaginationQuery {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MoverTransactionResponse {
     pub signature: String,
     pub token_address: String,
@@ -34,6 +35,7 @@ pub struct MoverTransactionResponse {
     #[serde(rename = "coinName")]
     pub token_name: Option<String>,
     pub token_symbol: Option<String>,
+    pub token_logo: Option<String>,
     // New fields from market_mover table
     #[serde(rename = "alphaGroup")]
     pub mover_role: String,
@@ -44,6 +46,7 @@ pub struct MoverTransactionResponse {
 }
 
 #[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenScoreResponse {
     pub token_address: String,
     pub mun_score: f64,
@@ -122,6 +125,7 @@ pub async fn get_mover_transaction(
             mover_name: a.mover_name.clone(),
             token: token_metrics.get(&a.token_address).cloned(),
             decimal: a.decimals,
+            token_logo: a.token_logo.clone(),
         })
         .collect();
 

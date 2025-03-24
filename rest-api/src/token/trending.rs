@@ -102,7 +102,7 @@ pub async fn upsert_token_meta(
 }
 pub async fn upsert_daily_volume(
     pool: &Pool<Postgres>,
-    trending_list: &Vec<Trending>,
+    trending_list: &[Trending],
     record_date: i64,
 ) -> Result<(), sqlx::Error> {
     let mut qb = QueryBuilder::new(
