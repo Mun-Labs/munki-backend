@@ -40,6 +40,7 @@ async fn main() {
         .route("/webhook", post(webhook::webhook_handler))
         .route("/vibecheck", get(fearandgreed::route::vibe_check))
         .route("/alphamoves", get(alpha_move::get_mover_transaction))
+        .route("/token/bio", get(token::route::get_token_bio))
         .with_state(app_state)
         .layer(middleware::from_fn(print_request_response))
         .layer(cors);

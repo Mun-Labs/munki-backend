@@ -242,12 +242,12 @@ pub async fn renew_token_in_watch(pool: &Pool<Postgres>, token_address: &str) ->
 }
 
 // Simulate fetching token details; replace with an actual implementation.
-async fn fetch_token_details(app: &AppState, token_address: &str) -> Result<TokenOverview> {
+pub async fn fetch_token_details(app: &AppState, token_address: &str) -> Result<TokenOverview> {
     app.bird_eye_client.overview(token_address).await
 }
 
 // Insert token data into the tokens table.
-async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<()> {
+pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<()> {
     sqlx::query(
         r#"
     INSERT INTO
