@@ -51,6 +51,8 @@ pub struct TokenOverview {
     #[serde(rename = "mc")]
     pub marketcap: Option<f64>,
     pub holder: Option<f64>,
+    #[serde(rename = "websiteURL")]
+    pub website_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -224,7 +226,6 @@ pub struct TokenOverviewResponse {
     pub name: String,
     pub symbol: String,
     pub decimals: Option<i32>,
-    pub description: Option<String>,
     pub logo_uri: Option<String>,
     pub website_url: Option<String>,
     pub metadata: Option<serde_json::Value>,
