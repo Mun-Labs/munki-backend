@@ -133,6 +133,7 @@ pub struct TokenVolumeHistory {
     pub name: String,
     pub symbol: String,
     pub logo_uri: Option<String>,
+    pub volume24h_percent: Option<f64>,
 }
 
 pub async fn query_top_token_volume_history_by_date(
@@ -147,9 +148,11 @@ pub async fn query_top_token_volume_history_by_date(
         tvh.record_date,
         t.image_url AS logo_uri,
         t.name as name,
-        t.symbol as symbol
+        t.symbol as symbol,
+        tm.volume_change_percent as volume24h_percent
         FROM token_volume_history tvh
         INNER JOIN tokens t ON t.token_address = tvh.token_address
+        LEFT JOIN token_metrics tm ON tm.token_address = tvh.token_address
         WHERE record_date = $2
         ORDER BY tvh.volume24h DESC LIMIT $1"#,
     )
