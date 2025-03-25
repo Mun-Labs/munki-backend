@@ -80,6 +80,7 @@ pub struct Token {
     pub price24hchange: Option<BigDecimal>,
     #[sqlx(rename = "current_price")]
     pub price: Option<BigDecimal>,
+    pub volume24h: Option<BigDecimal>,
 }
 
 #[derive(serde::Serialize)]
@@ -95,6 +96,7 @@ pub struct TokenResponse {
     pub price24hchange: f64,
     #[serde(rename = "current_price")]
     pub price: f64,
+    pub volume24h: f64,
 }
 
 impl From<&Token> for TokenResponse {
@@ -122,6 +124,12 @@ impl From<&Token> for TokenResponse {
                 .unwrap_or_default()
                 .to_f64()
                 .unwrap_or_default(),
+            volume24h: value
+                .volume24h
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
         }
     }
 }
@@ -136,6 +144,7 @@ pub struct TrendingTokenResponse {
     pub symbol: String,
     pub name: String,
     pub holder_count: i32,
+    pub volume24h_percent: Option<f64>,
 }
 
 impl From<&TokenVolumeHistory> for TrendingTokenResponse {
@@ -147,6 +156,7 @@ impl From<&TokenVolumeHistory> for TrendingTokenResponse {
             name,
             symbol,
             logo_uri,
+            volume24h_percent,
         }: &TokenVolumeHistory,
     ) -> Self {
         Self {
@@ -157,6 +167,7 @@ impl From<&TokenVolumeHistory> for TrendingTokenResponse {
             symbol: symbol.clone(),
             logo_uri: logo_uri.clone(),
             holder_count: 0,
+            volume24h_percent: volume24h_percent.clone(),
         }
     }
 }
@@ -209,8 +220,9 @@ pub async fn search_tokens(
 
     let tokens = sqlx::query_as::<_, Token>(
         r#"
-        SELECT token_address, name, symbol, image_url as logo_uri, marketcap, price_change24h_percent as price24hchange, current_price
+        SELECT t.token_address, t.name, t.symbol, t.image_url as logo_uri, t.marketcap, t.price_change24h_percent as price24hchange, t.current_price, tvh.volume24h
         FROM tokens t
+        INNER JOIN token_volume_history tvh ON t.token_address = tvh.token_address
         WHERE t.token_address % $1 OR name % $1 OR symbol % $1
         ORDER BY marketcap DESC
         LIMIT $2 OFFSET $3
