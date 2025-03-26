@@ -1,8 +1,9 @@
+// use std::path::Path;
 use crate::app::AppState;
 use crate::response::HttpResponse;
 use crate::time_util;
-use crate::token::{query_top_token_volume_history, TokenVolumeHistory};
-use axum::extract::{Query, State};
+use crate::token::{background_job, fetch_token_details, query_top_token_volume_history, token_bio, token_by_address, TokenOverview, TokenOverviewResponse, TokenSdk, TokenVolumeHistory};
+use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::Utc;
@@ -235,3 +236,32 @@ pub async fn search_tokens(
         .await?;
     Ok(tokens)
 }
+
+
+pub async fn get_token_bio(
+    State(app): State<AppState>,
+    Path(address): Path<String>,
+) -> Result<Json<HttpResponse<TokenOverviewResponse>>, (StatusCode, String)> {
+    let mut resp: TokenOverviewResponse;
+    let missing = token_by_address(&app.pool, vec![address.clone()])
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    if !missing.is_empty() {
+        if let Ok(token) = fetch_token_details(&app, &address).await {
+            resp = background_job::insert_token(&app.pool, &token).await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        }
+    }
+    resp = token_bio(&app.pool, &address).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(HttpResponse {
+        code: 200,
+        response: resp,
+        last_updated: Utc::now().timestamp(),
+    }))
+}
+
+
+
+

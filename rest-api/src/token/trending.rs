@@ -2,6 +2,11 @@ use bigdecimal::BigDecimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres, QueryBuilder};
 use std::collections::HashMap;
+use axum::http::StatusCode;
+use moka::ops::compute::Op;
+use crate::app;
+use crate::token::{background_job, fetch_token_details};
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Trending {
@@ -46,6 +51,8 @@ pub struct TokenOverview {
     #[serde(rename = "mc")]
     pub marketcap: Option<f64>,
     pub holder: Option<f64>,
+    #[serde(rename = "websiteURL")]
+    pub website_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -215,6 +222,50 @@ pub struct Token {
     pub symbol: String,
     pub logo_uri: Option<String>,
 }
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenOverviewResponse {
+    pub token_address: String,
+    pub name: String,
+    pub symbol: String,
+    pub decimals: Option<i32>,
+    pub logo_uri: Option<String>,
+    pub website_url: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+    pub current_price: Option<BigDecimal>,
+    pub total_supply: Option<BigDecimal>,
+    pub marketcap: Option<BigDecimal>,
+    pub history24h_price: Option<BigDecimal>,
+    pub price_change24h_percent: Option<BigDecimal>,
+}
+
+pub async fn token_bio(pool: &Pool<Postgres>, address: &str) -> anyhow::Result<TokenOverviewResponse> {
+    let token = sqlx::query_as::<_, TokenOverviewResponse>(
+        "
+        SELECT
+            token_address,
+            name,
+            symbol,
+            decimals,
+            description,
+            image_url as logo_uri,
+            website_url,
+            metadata,
+            current_price,
+            total_supply,
+            marketcap,
+            history24h_price,
+            price_change24h_percent
+        FROM tokens
+        WHERE token_address = $1
+        ",
+    )
+        .bind(&address)
+        .fetch_one(pool)
+        .await?;
+    Ok(token)
+}
+
 
 #[cfg(test)]
 mod internal_test {

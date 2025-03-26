@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::thirdparty::MunScoreSdk;
-use crate::token::{TokenOverview, TokenSdk};
+use crate::token::{TokenOverview, TokenOverviewResponse, TokenSdk};
 use anyhow::Result;
 use log::{error, info};
 use sqlx::types::Json;
@@ -242,17 +242,17 @@ pub async fn renew_token_in_watch(pool: &Pool<Postgres>, token_address: &str) ->
 }
 
 // Simulate fetching token details; replace with an actual implementation.
-async fn fetch_token_details(app: &AppState, token_address: &str) -> Result<TokenOverview> {
+pub async fn fetch_token_details(app: &AppState, token_address: &str) -> Result<TokenOverview> {
     app.bird_eye_client.overview(token_address).await
 }
 
 // Insert token data into the tokens table.
-async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<()> {
-    sqlx::query(
-        r#"
+pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<TokenOverviewResponse> {
+    let token = sqlx::query_as::<_, TokenOverviewResponse>(
+        "
     INSERT INTO
-    tokens (token_address, name, symbol, image_url, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    tokens (token_address, name, symbol, image_url, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     ON CONFLICT (token_address) do UPDATE SET
     total_supply = EXCLUDED.total_supply,
     marketcap = EXCLUDED.marketcap,
@@ -261,7 +261,7 @@ async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<()
         decimals = EXCLUDED.decimals,
     current_price = EXCLUDED.current_price,
     metadata = EXCLUDED.metadata
-     RETURNING token_address"#,
+     RETURNING token_address, name, symbol, image_url as logo_uri, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url",
     )
     .bind(&token.address)
     .bind(&token.name)
@@ -274,7 +274,8 @@ async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<()
     .bind(token.price)
     .bind(token.decimals as i64)
     .bind(Json(&token.extensions))
-    .execute(pool)
+    .bind(&token.website_url)
+    .fetch_one(pool)
     .await?;
-    Ok(())
+    Ok(token)
 }
