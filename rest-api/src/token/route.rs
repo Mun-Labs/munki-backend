@@ -145,7 +145,7 @@ pub struct TrendingTokenResponse {
     pub symbol: String,
     pub name: String,
     pub holder_count: i32,
-    pub volume24h_percent: Option<f64>,
+    pub volume24h_percent: Option<BigDecimal>,
 }
 
 impl From<&TokenVolumeHistory> for TrendingTokenResponse {

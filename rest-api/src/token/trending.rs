@@ -140,7 +140,8 @@ pub struct TokenVolumeHistory {
     pub name: String,
     pub symbol: String,
     pub logo_uri: Option<String>,
-    pub volume24h_percent: Option<f64>,
+    #[sqlx(default)]
+    pub volume24h_percent: Option<BigDecimal>,
 }
 
 pub async fn query_top_token_volume_history_by_date(
