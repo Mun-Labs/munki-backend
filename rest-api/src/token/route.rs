@@ -3,9 +3,10 @@ use crate::app::AppState;
 use crate::response::HttpResponse;
 use crate::time_util;
 use crate::token::{
-    background_job, create_dummy_token_distribution, fetch_token_details,
-    query_top_token_volume_history, token_bio, token_by_address, TokenDistributions, TokenOverview,
-    TokenOverviewResponse, TokenSdk, TokenVolumeHistory,
+    background_job, create_dummy_token_analysis, create_dummy_token_distribution,
+    fetch_token_details, query_top_token_volume_history, token_bio, token_by_address,
+    TokenAnalytics, TokenDistributions, TokenOverview, TokenOverviewResponse, TokenSdk,
+    TokenVolumeHistory,
 };
 use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
@@ -260,6 +261,18 @@ pub async fn get_token_bio(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    Ok(Json(HttpResponse {
+        code: 200,
+        response: resp,
+        last_updated: Utc::now().timestamp(),
+    }))
+}
+
+pub async fn get_token_analytics(
+    State(app): State<AppState>,
+    Path(address): Path<String>,
+) -> Result<Json<HttpResponse<TokenAnalytics>>, (StatusCode, String)> {
+    let resp: TokenAnalytics = create_dummy_token_analysis();
     Ok(Json(HttpResponse {
         code: 200,
         response: resp,
