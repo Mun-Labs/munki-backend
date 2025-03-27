@@ -2,7 +2,11 @@
 use crate::app::AppState;
 use crate::response::HttpResponse;
 use crate::time_util;
-use crate::token::{background_job, fetch_token_details, query_top_token_volume_history, token_bio, token_by_address, TokenOverview, TokenOverviewResponse, TokenSdk, TokenVolumeHistory};
+use crate::token::{
+    background_job, create_dummy_token_distribution, fetch_token_details,
+    query_top_token_volume_history, token_bio, token_by_address, TokenDistributions, TokenOverview,
+    TokenOverviewResponse, TokenSdk, TokenVolumeHistory,
+};
 use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
 use bigdecimal::{BigDecimal, ToPrimitive};
@@ -237,7 +241,6 @@ pub async fn search_tokens(
     Ok(tokens)
 }
 
-
 pub async fn get_token_bio(
     State(app): State<AppState>,
     Path(address): Path<String>,
@@ -248,11 +251,13 @@ pub async fn get_token_bio(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     if !missing.is_empty() {
         if let Ok(token) = fetch_token_details(&app, &address).await {
-            resp = background_job::insert_token(&app.pool, &token).await
+            resp = background_job::insert_token(&app.pool, &token)
+                .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         }
     }
-    resp = token_bio(&app.pool, &address).await
+    resp = token_bio(&app.pool, &address)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(HttpResponse {
@@ -262,6 +267,15 @@ pub async fn get_token_bio(
     }))
 }
 
+pub async fn get_token_distributions(
+    State(app): State<AppState>,
+    Path(address): Path<String>,
+) -> Result<Json<HttpResponse<Vec<TokenDistributions>>>, (StatusCode, String)> {
+    let resp: Vec<TokenDistributions> = create_dummy_token_distribution();
 
-
-
+    Ok(Json(HttpResponse {
+        code: 200,
+        response: resp,
+        last_updated: Utc::now().timestamp(),
+    }))
+}
