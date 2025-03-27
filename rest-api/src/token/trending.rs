@@ -53,6 +53,11 @@ pub struct TokenOverview {
     pub holder: Option<f64>,
     #[serde(rename = "websiteURL")]
     pub website_url: Option<String>,
+    #[serde(rename = "v24hUSD")]
+    pub v24h_usd: Option<f64>,
+    #[serde(rename = "volume24h_change_percent")]
+    pub v24h_change_percent: Option<f64>,
+
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -113,7 +118,7 @@ pub async fn upsert_daily_volume(
     record_date: i64,
 ) -> Result<(), sqlx::Error> {
     let mut qb = QueryBuilder::new(
-        "INSERT INTO token_volume_history (token_address, volume24h, record_date) ",
+        "INSERT INTO token_volume_history (token_address, volume24h, record_date)",
     );
 
     qb.push_values(trending_list.iter(), |mut b, trending| {
@@ -238,6 +243,7 @@ pub struct TokenOverviewResponse {
     pub marketcap: Option<BigDecimal>,
     pub history24h_price: Option<BigDecimal>,
     pub price_change24h_percent: Option<BigDecimal>,
+    pub volume24h: Option<BigDecimal>,
 }
 
 pub async fn token_bio(pool: &Pool<Postgres>, address: &str) -> anyhow::Result<TokenOverviewResponse> {

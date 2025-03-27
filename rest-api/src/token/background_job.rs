@@ -1,6 +1,6 @@
 use crate::app::AppState;
-use crate::thirdparty::MunScoreSdk;
-use crate::token::{TokenOverview, TokenOverviewResponse, TokenSdk};
+use crate::thirdparty::{MunScoreSdk, TokenData};
+use crate::token::{trending_token, upsert_daily_volume, TokenOverview, TokenOverviewResponse, TokenSdk, Trending};
 use anyhow::Result;
 use log::{error, info};
 use sqlx::types::Json;
@@ -8,7 +8,10 @@ use sqlx::{Pool, Postgres};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use chrono::Utc;
 use tokio::time::sleep;
+use crate::price::store_metric_in_db;
+use crate::volume::upsert_metrics;
 
 #[derive(Debug, sqlx::FromRow)]
 struct TokenRow {}
@@ -248,7 +251,7 @@ pub async fn fetch_token_details(app: &AppState, token_address: &str) -> Result<
 
 // Insert token data into the tokens table.
 pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<TokenOverviewResponse> {
-    let token = sqlx::query_as::<_, TokenOverviewResponse>(
+    let resp = sqlx::query_as::<_, TokenOverviewResponse>(
         "
     INSERT INTO
     tokens (token_address, name, symbol, image_url, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url)
@@ -277,5 +280,26 @@ pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Resul
     .bind(&token.website_url)
     .fetch_one(pool)
     .await?;
-    Ok(token)
+    let metric: TokenData = TokenData {
+        update_unix_time: Utc::now().timestamp(),
+        update_human_time: Utc::now().to_rfc3339(),
+        volume_usd: token.v24h_usd.unwrap_or_default(),
+        volume_change_percent: token.v24h_change_percent.unwrap_or_default(),
+        price_change_percent: token.price_change24h_percent.unwrap_or_default(),
+        price: token.price.unwrap_or_default(),
+    };
+    store_metric_in_db(pool, &metric, &token.address).await?;
+    let vol: &[Trending] = &[Trending {
+        address: resp.token_address.clone(),
+        decimals: resp.decimals.unwrap(),
+        logo_uri: resp.logo_uri.clone(),
+        name: resp.name.clone(),
+        symbol: resp.symbol.clone(),
+        volume24h_usd: token.v24h_usd.unwrap_or_default(),
+        rank: 0,
+        price: 0.0,
+    }];
+    upsert_daily_volume(pool, vol, Utc::now().timestamp()).await?;
+    resp.volume24h = token.v24h_usd.unwrap_or_default();
+    Ok(resp)
 }
