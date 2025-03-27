@@ -2,7 +2,11 @@
 use crate::app::AppState;
 use crate::response::HttpResponse;
 use crate::time_util;
-use crate::token::{background_job, fetch_token_details, query_top_token_volume_history, token_bio, token_by_address, TokenOverview, TokenOverviewResponse, TokenSdk, TokenVolumeHistory};
+use crate::token::{
+    background_job, create_dummy_token_analysis, fetch_token_details,
+    query_top_token_volume_history, token_bio, token_by_address, TokenAnalytics, TokenOverview,
+    TokenOverviewResponse, TokenSdk, TokenVolumeHistory,
+};
 use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
 use bigdecimal::{BigDecimal, ToPrimitive};
@@ -237,7 +241,6 @@ pub async fn search_tokens(
     Ok(tokens)
 }
 
-
 pub async fn get_token_bio(
     State(app): State<AppState>,
     Path(address): Path<String>,
@@ -262,6 +265,14 @@ pub async fn get_token_bio(
     }))
 }
 
-
-
-
+pub async fn get_token_analytics(
+    State(app): State<AppState>,
+    Path(address): Path<String>,
+) -> Result<Json<HttpResponse<TokenAnalytics>>, (StatusCode, String)> {
+    let resp: TokenAnalytics = create_dummy_token_analysis();
+    Ok(Json(HttpResponse {
+        code: 200,
+        response: resp,
+        last_updated: Utc::now().timestamp(),
+    }))
+}
