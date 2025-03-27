@@ -243,6 +243,7 @@ pub struct TokenOverviewResponse {
     pub marketcap: Option<BigDecimal>,
     pub history24h_price: Option<BigDecimal>,
     pub price_change24h_percent: Option<BigDecimal>,
+    #[sqlx(default)]
     pub volume24h: Option<BigDecimal>,
 }
 

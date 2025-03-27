@@ -54,6 +54,7 @@ pub async fn mindshare(
 
 // rust
 use anyhow::Result;
+use log::info;
 use serde::Deserialize;
 use sqlx::{Pool, Postgres};
 use validator::Validate;
@@ -236,7 +237,8 @@ pub async fn search_token(
         .map(TokenResponse::from)
         .collect();
     if tokens.is_empty() {
-        if let Ok(token) = fetch_token_details(&app, &query.q).await {
+        let address: &str = &query.q;
+        if let Ok( token) = fetch_token_details(&app, address).await {
             let new_token = background_job::insert_token(&app.pool, &token).await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             tokens.push(TokenResponse::from(&new_token));

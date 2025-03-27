@@ -8,7 +8,9 @@ use sqlx::{Pool, Postgres};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono::Utc;
+use futures::TryFutureExt;
 use tokio::time::sleep;
 use crate::price::store_metric_in_db;
 use crate::volume::upsert_metrics;
@@ -251,7 +253,7 @@ pub async fn fetch_token_details(app: &AppState, token_address: &str) -> Result<
 
 // Insert token data into the tokens table.
 pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<TokenOverviewResponse> {
-    let resp = sqlx::query_as::<_, TokenOverviewResponse>(
+    let mut resp = sqlx::query_as::<_, TokenOverviewResponse>(
         "
     INSERT INTO
     tokens (token_address, name, symbol, image_url, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url)
@@ -280,6 +282,7 @@ pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Resul
     .bind(&token.website_url)
     .fetch_one(pool)
     .await?;
+
     let metric: TokenData = TokenData {
         update_unix_time: Utc::now().timestamp(),
         update_human_time: Utc::now().to_rfc3339(),
@@ -288,18 +291,28 @@ pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Resul
         price_change_percent: token.price_change24h_percent.unwrap_or_default(),
         price: token.price.unwrap_or_default(),
     };
+
     store_metric_in_db(pool, &metric, &token.address).await?;
-    let vol: &[Trending] = &[Trending {
-        address: resp.token_address.clone(),
-        decimals: resp.decimals.unwrap(),
-        logo_uri: resp.logo_uri.clone(),
-        name: resp.name.clone(),
-        symbol: resp.symbol.clone(),
-        volume24h_usd: token.v24h_usd.unwrap_or_default(),
-        rank: 0,
-        price: 0.0,
-    }];
-    upsert_daily_volume(pool, vol, Utc::now().timestamp()).await?;
-    resp.volume24h = token.v24h_usd.unwrap_or_default();
+
+    let volume24h = token.v24h_usd
+        .map(|v| BigDecimal::from_f64(v).unwrap_or_default())
+        .unwrap_or_default();
+    resp.volume24h =
+        sqlx::query_scalar(
+            "INSERT INTO token_volume_history (token_address, volume24h, record_date)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (token_address, record_date) DO UPDATE
+            SET volume24h = EXCLUDED.volume24h
+            RETURNING volume24h"
+        )
+            .bind(&resp.token_address)
+            .bind(&volume24h)
+            .bind(Utc::now().timestamp())
+            .fetch_one(pool)
+            .await
+            .map_err(|e| {
+                error!("Error upserting daily volume for {}: {}", resp.token_address, e);
+                e
+            })?;
     Ok(resp)
 }
