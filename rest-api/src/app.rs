@@ -33,6 +33,7 @@ pub struct AppState {
     pub alternative_client: AlternativeClient,
     pub moni_client: Arc<MoniClient>,
     pub pool: Pool<Postgres>,
+    pub client: reqwest::Client,
     // pub helius: Arc<Helius>,
 }
 const ALTERNATIVE_BASE_URL: &str = "https://api.alternative.me/fng/";
@@ -56,7 +57,7 @@ impl AppState {
             alternative_client: AlternativeClient::new(ALTERNATIVE_BASE_URL.into(), 31),
             pool: init_pg_pool().await,
             moni_client: Arc::new(MoniClient::new(moni_api_key, client.clone())),
-            // helius: Arc::new(Helius::new(api_key, cluster).unwrap()),
+            client, // helius: Arc::new(Helius::new(api_key, cluster).unwrap()),
         }
     }
 

@@ -4,7 +4,7 @@ use crate::token::{trending_token, upsert_daily_volume, TokenOverview, TokenOver
 use anyhow::Result;
 use log::{error, info};
 use sqlx::types::Json;
-use sqlx::{Pool, Postgres};
+use sqlx::{PgPool, Pool, Postgres};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -42,6 +42,21 @@ async fn process_token_watch(app: &Arc<AppState>) -> Result<()> {
             info!("Token details: {:?}", token_data);
             insert_token(pool, &token_data).await?;
 
+            if let Ok(safety_score) = thirdparty::get_safe_score(&app.client, &token_address)
+                .await
+                .map_err(|e| {
+                    error!("Error fetching safe score for {}: {}", token_address, e);
+                    e
+                })
+            {
+                let _ = upsert_safe_score(pool, &token_address, safety_score)
+                    .await
+                    .map_err(|e| {
+                        error!("Error fetching safe score for {}: {}", token_address, e);
+                        e
+                    });
+            }
+
             if let Ok(holders) = app
                 .bird_eye_client
                 .holders(&token_address)
@@ -64,8 +79,12 @@ async fn process_token_watch(app: &Arc<AppState>) -> Result<()> {
             }
 
             if check_if_exists_munscore(pool, &token_address)
-                .await.map_err(|e| {
-                    error!("Error checking if mun score exists for {}: {}", token_address, e);
+                .await
+                .map_err(|e| {
+                    error!(
+                        "Error checking if mun score exists for {}: {}",
+                        token_address, e
+                    );
                     e
                 })?
                 .is_none()
@@ -93,10 +112,15 @@ async fn process_token_watch(app: &Arc<AppState>) -> Result<()> {
                         ),
                         };
                     } else {
-                        mark_failed_munscore(pool, &token_address).await.map_err(|e| {
-                            error!("Error marking mun score as failed for {}: {}", token_address, e);
-                            e
-                        })?;
+                        mark_failed_munscore(pool, &token_address)
+                            .await
+                            .map_err(|e| {
+                                error!(
+                                    "Error marking mun score as failed for {}: {}",
+                                    token_address, e
+                                );
+                                e
+                            })?;
                     }
                 }
             }
@@ -254,6 +278,7 @@ pub async fn fetch_token_details(app: &AppState, token_address: &str) -> Result<
 // Insert token data into the tokens table.
 pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<TokenOverviewResponse> {
     let mut resp = sqlx::query_as::<_, TokenOverviewResponse>(
+
         "
     INSERT INTO
     tokens (token_address, name, symbol, image_url, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url)
@@ -315,4 +340,24 @@ pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Resul
                 e
             })?;
     Ok(resp)
+}
+
+async fn upsert_safe_score(
+    pool: &PgPool,
+    token_address: &str,
+    risk_score: f64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO alpha_move_token_metric (token_address, risk_score)
+        VALUES ($1, $2)
+        ON CONFLICT (token_address) DO UPDATE
+        SET risk_score = EXCLUDED.risk_score
+        "#,
+    )
+    .bind(token_address)
+    .bind(risk_score)
+    .execute(pool)
+    .await?;
+    Ok(())
 }

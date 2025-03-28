@@ -9,6 +9,7 @@ use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::error;
 use validator::Validate;
 
 #[derive(Deserialize, Validate)]
@@ -65,13 +66,14 @@ impl From<&TokenMetric> for TokenScoreResponse {
             top_fresh_wallet_holders,
             top_smart_wallets_holders,
             smart_followers,
+            risk_core,
             ..
         }: &TokenMetric,
     ) -> Self {
         Self {
             token_address: token_address.clone(),
             mun_score: mun_score.to_f64().unwrap_or_default(),
-            risk_score: 0.0,
+            risk_score: risk_core.to_f64().unwrap_or_default(),
             top_fresh_wallet_holders: *top_fresh_wallet_holders,
             top_smart_wallets_holders: *top_smart_wallets_holders,
             smart_followers: *smart_followers,
@@ -88,7 +90,10 @@ pub async fn get_mover_transaction(
 
     let transactions = transaction::fetch_mover_transactions(&app.pool, query.limit, query.offset)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| {
+            error!("Failed to fetch mover transactions: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
 
     let address = transactions
         .iter()
@@ -103,7 +108,10 @@ pub async fn get_mover_transaction(
                     .map(|a| (a.token_address.clone(), a))
                     .collect()
             })
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            .map_err(|e| {
+                error!("Failed to fetch token metrics: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            })?;
 
     // Execute query to count total rows in market_movers_transaction.
     let total = transaction::count_mover_transaction(&app)

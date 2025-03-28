@@ -5,6 +5,7 @@ use bigdecimal::BigDecimal;
 pub struct TokenMetric {
     pub token_address: String,
     pub mun_score: BigDecimal,
+    pub risk_core: BigDecimal,
     pub top_fresh_wallet_holders: i64,
     pub top_smart_wallets_holders: i64,
     pub smart_followers: i64,
@@ -20,6 +21,7 @@ pub async fn fetch_token_metrics_by_addresses(
         "SELECT
              token_address,
              GREATEST(mun_score, 0::numeric) as mun_score,
+             GREATEST(risk_score, 0::numeric) as risk_core,
              top_fresh_wallet_holders,
              top_smart_wallets_holders,
              smart_followers,
