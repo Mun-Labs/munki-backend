@@ -41,8 +41,6 @@ async fn main() {
         .route("/vibecheck", get(fearandgreed::route::vibe_check))
         .route("/alphamoves", get(alpha_move::get_mover_transaction))
         .route("/token/{address}/details", get(token::route::get_token_bio))
-        .route("/token/{address}/details/analytics", get(token::route::get_token_analytics))
-        .route("/token/{address}/details/distributions", get(token::route::get_token_distributions))
         .with_state(app_state)
         .layer(middleware::from_fn(print_request_response))
         .layer(cors);

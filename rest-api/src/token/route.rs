@@ -4,13 +4,6 @@ use crate::app::AppState;
 use crate::response::HttpResponse;
 use crate::{app, time_util};
 use crate::token::{background_job, fetch_token_details, query_top_token_volume_history, token_bio, token_by_address, SearchToken, TokenOverview, TokenOverviewResponse, TokenSdk, TokenVolumeHistory};
-use crate::time_util;
-use crate::token::{
-    background_job, create_dummy_token_analysis, create_dummy_token_distribution,
-    fetch_token_details, query_top_token_volume_history, token_bio, token_by_address,
-    TokenAnalytics, TokenDistributions, TokenOverview, TokenOverviewResponse, TokenSdk,
-    TokenVolumeHistory,
-};
 use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
 use bigdecimal::{BigDecimal, ToPrimitive};
@@ -35,13 +28,9 @@ pub struct TokenMindshare {
 pub async fn mindshare(
     State(app): State<AppState>,
 ) -> Result<Json<HttpResponse<Vec<TokenMindshare>>>, (StatusCode, String)> {
-    let vol = query_top_token_volume_history_by_date(
-        &app.pool,
-        100,
-        time_util::get_start_of_day(Utc::now()).timestamp(),
-    )
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vol = query_top_token_volume_history(&app.pool, 100)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let total_volume: f64 = vol
         .iter()
         .map(|v| v.volume24h.to_f64().unwrap_or_default())
@@ -343,12 +332,6 @@ pub async fn search_tokens(
         FROM tokens t
         INNER JOIN token_volume_history tvh ON t.token_address = tvh.token_address
         WHERE t.token_address = ANY($1) AND record_date <= extract(epoch from now()) - 3600
-                 INNER JOIN (
-            SELECT token_address, volume24h, record_date
-            FROM token_volume_history
-            WHERE record_date = (SELECT MAX(record_date) FROM token_volume_history)
-        ) tvh ON t.token_address = tvh.token_address
-        WHERE t.token_address % $1 OR name % $1 OR symbol % $1
         ORDER BY marketcap DESC
         LIMIT $2 OFFSET $3
         "#,
@@ -361,26 +344,23 @@ pub async fn search_tokens(
     Ok(tokens)
 }
 
+
 pub async fn get_token_bio(
     State(app): State<AppState>,
     Path(address): Path<String>,
 ) -> Result<Json<HttpResponse<TokenOverviewResponse>>, (StatusCode, String)> {
+    let mut resp: TokenOverviewResponse;
     let missing = token_by_address(&app.pool, vec![address.clone()])
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let resp = if !missing.is_empty() {
-        let token = fetch_token_details(&app, &address)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-        background_job::insert_token(&app.pool, &token)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    } else {
-        token_bio(&app.pool, &address)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    };
+    if !missing.is_empty() {
+        if let Ok(token) = fetch_token_details(&app, &address).await {
+            resp = background_job::insert_token(&app.pool, &token).await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        }
+    }
+    resp = token_bio(&app.pool, &address).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(HttpResponse {
         code: 200,
@@ -389,27 +369,6 @@ pub async fn get_token_bio(
     }))
 }
 
-pub async fn get_token_analytics(
-    State(app): State<AppState>,
-    Path(address): Path<String>,
-) -> Result<Json<HttpResponse<TokenAnalytics>>, (StatusCode, String)> {
-    let resp: TokenAnalytics = create_dummy_token_analysis();
-    Ok(Json(HttpResponse {
-        code: 200,
-        response: resp,
-        last_updated: Utc::now().timestamp(),
-    }))
-}
 
-pub async fn get_token_distributions(
-    State(app): State<AppState>,
-    Path(address): Path<String>,
-) -> Result<Json<HttpResponse<Vec<TokenDistributions>>>, (StatusCode, String)> {
-    let resp: Vec<TokenDistributions> = create_dummy_token_distribution();
 
-    Ok(Json(HttpResponse {
-        code: 200,
-        response: resp,
-        last_updated: Utc::now().timestamp(),
-    }))
-}
+
