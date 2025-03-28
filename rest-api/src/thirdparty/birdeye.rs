@@ -1,11 +1,12 @@
 use crate::price::{PriceSdk, TimeFilters};
-use crate::token::{TokenHolder, TokenMetadata, TokenOverview, TokenSdk, Trending};
+use crate::token::{SearchToken, TokenHolder, TokenMetadata, TokenOverview, TokenSdk, Trending};
 use anyhow::Error;
 use chrono::{Duration, Timelike, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::info;
+use crate::app::SOLANA;
 
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
@@ -49,6 +50,12 @@ pub struct PriceHistory {
 #[serde(rename_all = "camelCase")]
 pub struct ItemsResponse<T> {
     pub items: Vec<T>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultResponse<T> {
+    pub result: Vec<T>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -177,6 +184,39 @@ impl TokenSdk for BirdEyeClient {
 
         let body = serde_json::from_str::<BirdEyeResponse<ItemsResponse<TokenHolder>>>(&resp)?;
         Ok(body.data.items)
+    }
+
+    async fn search(&self, search_by: &str, search: &str) -> Result<Vec<SearchToken>, anyhow::Error> {
+        let url = format!("{}/defi/v3/search", self.base_url);
+        let resp = self
+            .client
+            .get(url)
+            .query(&[("search_by", search_by),
+                ("keyword", search),
+                ("chain", SOLANA),
+                ("target", "token"),
+                ("search_mode", "exact"),
+            ])
+            .header("X-API-KEY", &self.api_key)
+            .header("accept", "application/json")
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Request failed with status: {}",
+                resp.status()
+            ));
+        }
+        let items = resp
+            .json::<BirdEyeResponse<ItemsResponse<ResultResponse<SearchToken>>>>()
+            .await?
+            .data
+            .items;
+
+        // Flatten the Vec<ResultResponse<SearchToken>> into Vec<SearchToken>
+        let tokens: Vec<SearchToken> = items.into_iter().flat_map(|item| item.result).collect();
+
+        Ok(tokens)
     }
 }
 

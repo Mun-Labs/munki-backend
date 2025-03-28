@@ -1,11 +1,11 @@
-use crate::app;
-use crate::token::{background_job, fetch_token_details};
-use axum::http::StatusCode;
 use bigdecimal::BigDecimal;
-use moka::ops::compute::Op;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres, QueryBuilder};
 use std::collections::HashMap;
+use axum::http::StatusCode;
+use moka::ops::compute::Op;
+use crate::app;
+use crate::token::{background_job, fetch_token_details};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -31,7 +31,7 @@ pub struct TokenMetadata {
     pub logo_uri: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct TokenOverview {
     pub address: String,
     pub decimals: u64,
@@ -48,11 +48,15 @@ pub struct TokenOverview {
     pub price_change24h_percent: Option<f64>,
     #[serde(rename = "totalSupply")]
     pub total_supply: Option<f64>,
-    #[serde(rename = "marketcap")]
+    #[serde(rename = "mc")]
     pub marketcap: Option<f64>,
     pub holder: Option<f64>,
     #[serde(rename = "websiteURL")]
     pub website_url: Option<String>,
+    #[serde(rename = "v24hUSD")]
+    pub v24h_usd: Option<f64>,
+    #[serde(rename = "volume24h_change_percent")]
+    pub v24h_change_percent: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -65,6 +69,11 @@ pub struct TokenHolder {
     pub ui_amount: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchToken {
+    pub address: String
+}
+
 pub trait TokenSdk {
     async fn get_trending(&self, offset: i32, limit: i32) -> Result<Vec<Trending>, anyhow::Error>;
     async fn token_meta_multiple(
@@ -74,6 +83,7 @@ pub trait TokenSdk {
     async fn overview(&self, address: &str) -> Result<TokenOverview, anyhow::Error>;
 
     async fn holders(&self, address: &str) -> Result<Vec<TokenHolder>, anyhow::Error>;
+    async fn search(&self, search_by: &str, search: &str) -> Result<Vec<SearchToken>, anyhow::Error>;
 }
 
 pub async fn upsert_token_meta(
@@ -113,7 +123,7 @@ pub async fn upsert_daily_volume(
     record_date: i64,
 ) -> Result<(), sqlx::Error> {
     let mut qb = QueryBuilder::new(
-        "INSERT INTO token_volume_history (token_address, volume24h, record_date) ",
+        "INSERT INTO token_volume_history (token_address, volume24h, record_date)",
     );
 
     qb.push_values(trending_list.iter(), |mut b, trending| {
@@ -238,12 +248,11 @@ pub struct TokenOverviewResponse {
     pub marketcap: Option<BigDecimal>,
     pub history24h_price: Option<BigDecimal>,
     pub price_change24h_percent: Option<BigDecimal>,
+    #[sqlx(default)]
+    pub volume24h: Option<BigDecimal>,
 }
 
-pub async fn token_bio(
-    pool: &Pool<Postgres>,
-    address: &str,
-) -> anyhow::Result<TokenOverviewResponse> {
+pub async fn token_bio(pool: &Pool<Postgres>, address: &str) -> anyhow::Result<TokenOverviewResponse> {
     let token = sqlx::query_as::<_, TokenOverviewResponse>(
         "
         SELECT
@@ -264,11 +273,12 @@ pub async fn token_bio(
         WHERE token_address = $1
         ",
     )
-    .bind(&address)
-    .fetch_one(pool)
-    .await?;
+        .bind(&address)
+        .fetch_one(pool)
+        .await?;
     Ok(token)
 }
+
 
 #[cfg(test)]
 mod internal_test {
