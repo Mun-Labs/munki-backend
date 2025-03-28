@@ -232,7 +232,11 @@ pub async fn search_tokens(
         r#"
         SELECT t.token_address, t.name, t.symbol, t.image_url as logo_uri, t.marketcap, t.price_change24h_percent as price24hchange, t.current_price, tvh.volume24h
         FROM tokens t
-        INNER JOIN token_volume_history tvh ON t.token_address = tvh.token_address
+                 INNER JOIN (
+            SELECT token_address, volume24h, record_date
+            FROM token_volume_history
+            WHERE record_date = (SELECT MAX(record_date) FROM token_volume_history)
+        ) tvh ON t.token_address = tvh.token_address
         WHERE t.token_address % $1 OR name % $1 OR symbol % $1
         ORDER BY marketcap DESC
         LIMIT $2 OFFSET $3
