@@ -1,8 +1,9 @@
+use std::collections::HashSet;
 // use std::path::Path;
 use crate::app::AppState;
 use crate::response::HttpResponse;
-use crate::time_util;
-use crate::token::{background_job, fetch_token_details, query_top_token_volume_history, token_bio, token_by_address, TokenOverview, TokenOverviewResponse, TokenSdk, TokenVolumeHistory};
+use crate::{app, time_util};
+use crate::token::{background_job, fetch_token_details, query_top_token_volume_history, token_bio, token_by_address, SearchToken, TokenOverview, TokenOverviewResponse, TokenSdk, TokenVolumeHistory};
 use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
 use bigdecimal::{BigDecimal, ToPrimitive};
@@ -68,6 +69,15 @@ pub struct SearchQuery {
     pub limit: i64,
     #[validate(range(min = 0))]
     pub offset: i64,
+    #[validate(custom(function = "validate_search_by"))]
+    pub search_by: String,
+}
+
+fn validate_search_by(search_by: &str) -> Result<(), validator::ValidationError> {
+    match search_by {
+        "name" | "symbol" | "address" => Ok(()),
+        _ => Err(validator::ValidationError::new("invalid value for search_by")),
+    }
 }
 
 #[derive(serde::Serialize, sqlx::FromRow)]
@@ -223,27 +233,85 @@ impl From<&TokenOverviewResponse> for TokenResponse {
         }
     }
 }
+impl From<TokenOverview> for TokenResponse {
+    fn from(overview: TokenOverview) -> Self {
+        TokenResponse {
+            token_address: overview.address,
+            name: overview.name,
+            symbol: overview.symbol,
+            logo_uri: overview.logo_uri,
+            marketcap: overview.marketcap.unwrap_or(0.0),
+            price24hchange: overview.price_change24h_percent.unwrap_or(0.0),
+            price: overview.price.unwrap_or(0.0),
+            volume24h: overview.v24h_usd.unwrap_or(0.0),
+        }
+    }
+}
+
+// Implement From trait for Token to TokenResponse if needed
+impl From<Token> for TokenResponse {
+    fn from(token: Token) -> Self {
+        TokenResponse {
+            token_address: token.token_address,
+            name: token.name,
+            symbol: token.symbol,
+            logo_uri: token.logo_uri,
+            marketcap: token.marketcap
+                .map(|v| v.to_f64().unwrap_or(0.0))
+                .unwrap_or(0.0),
+            price24hchange: token.price24hchange
+                .map(|v| v.to_f64().unwrap_or(0.0))
+                .unwrap_or(0.0),
+            price: token.price
+                .map(|v| v.to_f64().unwrap_or(0.0))
+                .unwrap_or(0.0),
+            volume24h: token.volume24h
+                .map(|v| v.to_f64().unwrap_or(0.0))
+                .unwrap_or(0.0),
+        }
+    }
+}
+
 pub async fn search_token(
     State(app): State<AppState>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<HttpResponse<Vec<TokenResponse>>>, (StatusCode, String)> {
-    if let Err(validation_errors) = query.validate() {
-        return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
-    }
-    let mut tokens: Vec<TokenResponse> = search_tokens(&app.pool, &query.q, query.limit, query.offset)
+    query.validate().map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+
+    let addresses = app.bird_eye_client
+        .search(&query.search_by, &query.q)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .iter()
-        .map(TokenResponse::from)
-        .collect();
-    if tokens.is_empty() {
-        let address: &str = &query.q;
-        if let Ok( token) = fetch_token_details(&app, address).await {
-            let new_token = background_job::insert_token(&app.pool, &token).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let missing = token_by_address(&app.pool, addresses.iter().map(|t| t.address.clone()).collect())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let tokens = if !missing.is_empty() {
+        let mut final_tokens = Vec::new();
+        for miss in missing {
+            let new_token = fetch_token_details(&app, &miss)
+                .await
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            tokens.push(TokenResponse::from(&new_token));
+
+            let token_response = TokenResponse::from(new_token.clone());
+
+            background_job::insert_token(&app.pool, &new_token)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+            final_tokens.push(token_response);
         }
-    }
+        final_tokens
+    } else {
+        search_tokens(&app.pool, addresses, query.limit, query.offset)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .into_iter()
+            .map(TokenResponse::from)
+            .collect()
+    };
+
     Ok(Json(HttpResponse {
         code: 200,
         response: tokens,
@@ -252,23 +320,23 @@ pub async fn search_token(
 }
 pub async fn search_tokens(
     pool: &Pool<Postgres>,
-    search: &str,
+    search: Vec<SearchToken>,
     limit: i64,
     offset: i64,
 ) -> Result<Vec<Token>> {
     // Use full-text search by concatenating name and symbol into a tsvector and comparing against a tsquery.
-
+    let token_addresses: Vec<String> = search.into_iter().map(|token| token.address).collect();
     let tokens = sqlx::query_as::<_, Token>(
         r#"
         SELECT t.token_address, t.name, t.symbol, t.image_url as logo_uri, t.marketcap, t.price_change24h_percent as price24hchange, t.current_price, tvh.volume24h
         FROM tokens t
         INNER JOIN token_volume_history tvh ON t.token_address = tvh.token_address
-        WHERE (t.token_address % $1 OR name % $1 OR symbol % $1) AND record_date <= extract(epoch from now()) - 3600
+        WHERE t.token_address = ANY($1) AND record_date <= extract(epoch from now()) - 3600
         ORDER BY marketcap DESC
         LIMIT $2 OFFSET $3
         "#,
     )
-        .bind(search)
+        .bind(token_addresses)
         .bind(limit)
         .bind(offset)
         .fetch_all(pool)

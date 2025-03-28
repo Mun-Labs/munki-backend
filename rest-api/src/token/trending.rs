@@ -31,7 +31,7 @@ pub struct TokenMetadata {
     pub logo_uri: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct TokenOverview {
     pub address: String,
     pub decimals: u64,
@@ -57,7 +57,6 @@ pub struct TokenOverview {
     pub v24h_usd: Option<f64>,
     #[serde(rename = "volume24h_change_percent")]
     pub v24h_change_percent: Option<f64>,
-
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -70,6 +69,11 @@ pub struct TokenHolder {
     pub ui_amount: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SearchToken {
+    pub address: String
+}
+
 pub trait TokenSdk {
     async fn get_trending(&self, offset: i32, limit: i32) -> Result<Vec<Trending>, anyhow::Error>;
     async fn token_meta_multiple(
@@ -79,6 +83,7 @@ pub trait TokenSdk {
     async fn overview(&self, address: &str) -> Result<TokenOverview, anyhow::Error>;
 
     async fn holders(&self, address: &str) -> Result<Vec<TokenHolder>, anyhow::Error>;
+    async fn search(&self, search_by: &str, search: &str) -> Result<Vec<SearchToken>, anyhow::Error>;
 }
 
 pub async fn upsert_token_meta(
