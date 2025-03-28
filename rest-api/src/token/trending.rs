@@ -1,11 +1,11 @@
+use crate::app;
+use crate::token::{background_job, fetch_token_details};
+use axum::http::StatusCode;
 use bigdecimal::BigDecimal;
+use moka::ops::compute::Op;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres, QueryBuilder};
 use std::collections::HashMap;
-use axum::http::StatusCode;
-use moka::ops::compute::Op;
-use crate::app;
-use crate::token::{background_job, fetch_token_details};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -48,7 +48,7 @@ pub struct TokenOverview {
     pub price_change24h_percent: Option<f64>,
     #[serde(rename = "totalSupply")]
     pub total_supply: Option<f64>,
-    #[serde(rename = "mc")]
+    #[serde(rename = "marketcap")]
     pub marketcap: Option<f64>,
     pub holder: Option<f64>,
     #[serde(rename = "websiteURL")]
@@ -252,7 +252,10 @@ pub struct TokenOverviewResponse {
     pub volume24h: Option<BigDecimal>,
 }
 
-pub async fn token_bio(pool: &Pool<Postgres>, address: &str) -> anyhow::Result<TokenOverviewResponse> {
+pub async fn token_bio(
+    pool: &Pool<Postgres>,
+    address: &str,
+) -> anyhow::Result<TokenOverviewResponse> {
     let token = sqlx::query_as::<_, TokenOverviewResponse>(
         "
         SELECT
@@ -273,12 +276,11 @@ pub async fn token_bio(pool: &Pool<Postgres>, address: &str) -> anyhow::Result<T
         WHERE token_address = $1
         ",
     )
-        .bind(&address)
-        .fetch_one(pool)
-        .await?;
+    .bind(&address)
+    .fetch_one(pool)
+    .await?;
     Ok(token)
 }
-
 
 #[cfg(test)]
 mod internal_test {
