@@ -254,20 +254,22 @@ pub async fn get_token_bio(
     State(app): State<AppState>,
     Path(address): Path<String>,
 ) -> Result<Json<HttpResponse<TokenOverviewResponse>>, (StatusCode, String)> {
-    let mut resp: TokenOverviewResponse;
     let missing = token_by_address(&app.pool, vec![address.clone()])
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    if !missing.is_empty() {
-        if let Ok(token) = fetch_token_details(&app, &address).await {
-            resp = background_job::insert_token(&app.pool, &token)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        }
-    }
-    resp = token_bio(&app.pool, &address)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let resp = if !missing.is_empty() {
+        let token = fetch_token_details(&app, &address)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        background_job::insert_token(&app.pool, &token)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    } else {
+        token_bio(&app.pool, &address)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    };
 
     Ok(Json(HttpResponse {
         code: 200,
