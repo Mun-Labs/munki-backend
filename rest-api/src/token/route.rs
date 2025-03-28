@@ -32,9 +32,13 @@ pub struct TokenMindshare {
 pub async fn mindshare(
     State(app): State<AppState>,
 ) -> Result<Json<HttpResponse<Vec<TokenMindshare>>>, (StatusCode, String)> {
-    let vol = query_top_token_volume_history(&app.pool, 100)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vol = query_top_token_volume_history_by_date(
+        &app.pool,
+        100,
+        time_util::get_start_of_day(Utc::now()).timestamp(),
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let total_volume: f64 = vol
         .iter()
         .map(|v| v.volume24h.to_f64().unwrap_or_default())
