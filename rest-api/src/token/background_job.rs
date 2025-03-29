@@ -11,8 +11,10 @@ use std::time::Duration;
 use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono::Utc;
 use futures::TryFutureExt;
+use moka::ops::compute::Op;
 use tokio::time::sleep;
 use crate::price::store_metric_in_db;
+use crate::{thirdparty, time_util};
 use crate::volume::upsert_metrics;
 
 #[derive(Debug, sqlx::FromRow)]
@@ -322,24 +324,26 @@ pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Resul
     let volume24h = token.v24h_usd
         .map(|v| BigDecimal::from_f64(v).unwrap_or_default())
         .unwrap_or_default();
-    resp.volume24h =
-        sqlx::query_scalar(
-            "INSERT INTO token_volume_history (token_address, volume24h, record_date)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (token_address, record_date) DO UPDATE
-            SET volume24h = EXCLUDED.volume24h
-            RETURNING volume24h"
-        )
-            .bind(&resp.token_address)
-            .bind(&volume24h)
-            .bind(Utc::now().timestamp())
-            .fetch_one(pool)
-            .await
-            .map_err(|e| {
-                error!("Error upserting daily volume for {}: {}", resp.token_address, e);
-                e
-            })?;
+    resp.volume24h = upsert_volume24h(pool, &resp.token_address, volume24h).await?;
     Ok(resp)
+}
+
+pub async fn upsert_volume24h(pool: &Pool<Postgres>, token_address: &str, volume24h: BigDecimal) -> Result<Option<BigDecimal>, sqlx::Error> {
+    let resp = sqlx::query_scalar(
+        r#"
+        INSERT INTO token_volume_history (token_address, volume24h, record_date)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (token_address, record_date) DO UPDATE
+        SET volume24h = EXCLUDED.volume24h
+        RETURNING volume24h
+        "#,
+    )
+    .bind(token_address)
+    .bind(volume24h)
+    .bind(time_util::get_start_of_day(Utc::now()).timestamp())
+    .fetch_one(pool)
+    .await?;
+    Ok((resp))
 }
 
 async fn upsert_safe_score(
