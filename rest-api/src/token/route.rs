@@ -271,17 +271,13 @@ pub async fn get_token_analytics(
     State(app): State<AppState>,
     Path(address): Path<String>,
 ) -> Result<Json<HttpResponse<TokenAnalytics>>, (StatusCode, Json<ErrorResponse>)> {
-    let token_result = query_token_analytics(&app.pool, &address)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    message: "Failed to query token analytics".to_string(),
-                    response: Some(serde_json::json!({ "error": e.to_string() })),
-                }),
-            )
-        })?;
+    let token_result = match query_token_analytics(&app.pool, &address).await {
+        Ok(result) => result,
+        Err(e) => {
+            eprintln!("Failed to query token analytics: {}", e);
+            None
+        }
+    };
 
     if let Some(token) = token_result {
         return Ok(Json(HttpResponse {
@@ -297,7 +293,7 @@ pub async fn get_token_analytics(
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
-                    message: "Failed to fetch token overview".to_string(),
+                    message: "Failed to fetch_token_detail_overview".to_string(),
                     response: Some(serde_json::json!({ "error": e.to_string() })),
                 }),
             )

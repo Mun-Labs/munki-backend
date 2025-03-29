@@ -79,12 +79,15 @@ pub async fn query_token_analytics(
     pool: &Pool<Postgres>,
     address: &str,
 ) -> Result<Option<TokenAnalytics>> {
-    let token =
-        sqlx::query_as::<_, TokenAnalytics>("SELECT * FROM token_analytics WHERE address = $1")
-            .bind(address)
-            .fetch_one(pool)
-            .await?;
-    Ok(Some(token))
+    let token = sqlx::query_as::<_, TokenAnalytics>(
+        r#"
+        SELECT * FROM token_analytics WHERE address = $1
+        "#,
+    )
+    .bind(address)
+    .fetch_optional(pool)
+    .await?;
+    Ok(token)
 }
 
 pub async fn save_token_analytics(
@@ -128,41 +131,59 @@ pub async fn fetch_token_detail_overview(
     app: &AppState,
     token_address: &str,
 ) -> Result<TokenDetailOverview> {
-    app.bird_eye_client
+    let result = app
+        .bird_eye_client
         .token_detail_overview(token_address)
-        .await
+        .await;
+
+    match &result {
+        Ok(token_overview) => {
+            eprintln!(
+                "Successfully fetched token overview for address {}: {:?}",
+                token_address, token_overview
+            );
+            return result;
+        }
+        Err(e) => {
+            eprintln!(
+                "Failed to fetch token overview for address {}: {}",
+                token_address, e
+            );
+            return Err(anyhow::anyhow!("Custom error message: {}", e));
+        }
+    }
 }
 
 pub fn map_to_token_analytics(overview: &TokenDetailOverview) -> TokenAnalytics {
     TokenAnalytics {
         market_cap: overview.market_cap,
-        market_cap_change_7d: 0.0, // Không có dữ liệu 7 ngày trong API, để mặc định
+        market_cap_change_7d: 0.0,
         market_cap_7d_historical_values: vec![].into(),
-        volume_24h: overview.v24h,
+        volume_24h: overview.v_24h,
         volume_24h_change_7d: overview.price_change_24h_percent,
         volume_historical: vec![
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
@@ -172,27 +193,27 @@ pub fn map_to_token_analytics(overview: &TokenDetailOverview) -> TokenAnalytics 
         liquidity_change: 0.0,
         liquidity_historical: vec![
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
@@ -202,27 +223,27 @@ pub fn map_to_token_analytics(overview: &TokenDetailOverview) -> TokenAnalytics 
         holders_change_7d: 0,
         holders_historical: vec![
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },
             HistoricalValue {
-                value: overview.v24h,
+                value: overview.v_24h,
                 time: Some(Utc::now().timestamp()),
                 label: Some("24h".to_string()),
             },

@@ -171,17 +171,23 @@ impl TokenSdk for BirdEyeClient {
             .send()
             .await?;
 
-        if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await?;
+
+        if !status.is_success() {
             return Err(anyhow::anyhow!(
-                "Request failed with status: {}",
-                resp.status()
+                "Request failed with status: {} - Body: {}",
+                status,
+                body
             ));
         }
 
-        Ok(resp
-            .json::<BirdEyeResponse<TokenDetailOverview>>()
-            .await?
-            .data)
+        let response: BirdEyeResponse<TokenDetailOverview> =
+            serde_json::from_str(&body).map_err(|e| {
+                anyhow::anyhow!("Failed to deserialize response: {} - Body: {}", e, body)
+            })?;
+
+        Ok(response.data)
     }
 
     async fn holders(&self, address: &str) -> Result<Vec<TokenHolder>, Error> {
