@@ -37,9 +37,13 @@ pub struct TokenMindshare {
 pub async fn mindshare(
     State(app): State<AppState>,
 ) -> Result<Json<HttpResponse<Vec<TokenMindshare>>>, (StatusCode, String)> {
-    let vol = query_top_token_volume_history(&app.pool, 100)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let vol = query_top_token_volume_history_by_date(
+        &app.pool,
+        100,
+        time_util::get_start_of_day(Utc::now()).timestamp(),
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let total_volume: f64 = vol
         .iter()
         .map(|v| v.volume24h.to_f64().unwrap_or_default())
@@ -227,7 +231,11 @@ pub async fn search_tokens(
         r#"
         SELECT t.token_address, t.name, t.symbol, t.image_url as logo_uri, t.marketcap, t.price_change24h_percent as price24hchange, t.current_price, tvh.volume24h
         FROM tokens t
-        INNER JOIN token_volume_history tvh ON t.token_address = tvh.token_address
+                 INNER JOIN (
+            SELECT token_address, volume24h, record_date
+            FROM token_volume_history
+            WHERE record_date = (SELECT MAX(record_date) FROM token_volume_history)
+        ) tvh ON t.token_address = tvh.token_address
         WHERE t.token_address % $1 OR name % $1 OR symbol % $1
         ORDER BY marketcap DESC
         LIMIT $2 OFFSET $3
@@ -245,20 +253,22 @@ pub async fn get_token_bio(
     State(app): State<AppState>,
     Path(address): Path<String>,
 ) -> Result<Json<HttpResponse<TokenOverviewResponse>>, (StatusCode, String)> {
-    let mut resp: TokenOverviewResponse;
     let missing = token_by_address(&app.pool, vec![address.clone()])
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    if !missing.is_empty() {
-        if let Ok(token) = fetch_token_details(&app, &address).await {
-            resp = background_job::insert_token(&app.pool, &token)
-                .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        }
-    }
-    resp = token_bio(&app.pool, &address)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let resp = if !missing.is_empty() {
+        let token = fetch_token_details(&app, &address)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        background_job::insert_token(&app.pool, &token)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    } else {
+        token_bio(&app.pool, &address)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    };
 
     Ok(Json(HttpResponse {
         code: 200,
