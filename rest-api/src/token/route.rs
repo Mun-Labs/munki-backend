@@ -63,6 +63,7 @@ pub async fn mindshare(
 
 // rust
 use anyhow::Result;
+use log::info;
 use serde::Deserialize;
 use sqlx::{Pool, Postgres};
 use validator::Validate;
@@ -201,6 +202,36 @@ pub async fn trending_token(
     }))
 }
 
+impl From<&TokenOverviewResponse> for TokenResponse {
+    fn from(overview: &TokenOverviewResponse) -> Self {
+        Self {
+            token_address: overview.token_address.clone(),
+            name: overview.name.clone(),
+            symbol: overview.symbol.clone(),
+            logo_uri: overview.logo_uri.clone(),
+            marketcap: overview.marketcap
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
+            price24hchange: overview.price_change24h_percent
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
+            price: overview.current_price
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
+            volume24h: overview.volume24h
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
+        }
+    }
+}
 pub async fn search_token(
     State(app): State<AppState>,
     Query(query): Query<SearchQuery>,
@@ -208,12 +239,20 @@ pub async fn search_token(
     if let Err(validation_errors) = query.validate() {
         return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
     }
-    let tokens = search_tokens(&app.pool, &query.q, query.limit, query.offset)
+    let mut tokens: Vec<TokenResponse> = search_tokens(&app.pool, &query.q, query.limit, query.offset)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .iter()
         .map(TokenResponse::from)
         .collect();
+    if tokens.is_empty() {
+        let address: &str = &query.q;
+        if let Ok( token) = fetch_token_details(&app, address).await {
+            let new_token = background_job::insert_token(&app.pool, &token).await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            tokens.push(TokenResponse::from(&new_token));
+        }
+    }
     Ok(Json(HttpResponse {
         code: 200,
         response: tokens,
@@ -232,6 +271,8 @@ pub async fn search_tokens(
         r#"
         SELECT t.token_address, t.name, t.symbol, t.image_url as logo_uri, t.marketcap, t.price_change24h_percent as price24hchange, t.current_price, tvh.volume24h
         FROM tokens t
+        INNER JOIN token_volume_history tvh ON t.token_address = tvh.token_address
+        WHERE (t.token_address % $1 OR name % $1 OR symbol % $1) AND record_date <= extract(epoch from now()) - 3600
                  INNER JOIN (
             SELECT token_address, volume24h, record_date
             FROM token_volume_history
