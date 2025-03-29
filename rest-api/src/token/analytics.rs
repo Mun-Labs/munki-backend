@@ -1,28 +1,31 @@
+use crate::app::AppState;
+use crate::token::TokenDetailOverview;
+use anyhow::Result;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use sqlx::types::Json;
+use sqlx::{FromRow, Pool, Postgres};
 
+use super::TokenSdk;
 // Main struct for the entire data structure
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenAnalytics {
     market_cap: f64,
     market_cap_change_7d: f64,
-    market_cap_7d_historical_values: Vec<HistoricalValue>,
+    market_cap_7d_historical_values: Json<Vec<HistoricalValue>>,
     volume_24h: f64,
     volume_24h_change_7d: f64,
-    volume_historical: Vec<HistoricalValue>,
+    volume_historical: Json<Vec<HistoricalValue>>,
     liquidity: f64,
     liquidity_change: f64,
-    liquidity_historical: Vec<HistoricalValue>,
-    holders: u64,
+    liquidity_historical: Json<Vec<HistoricalValue>>,
+    holders: i64,
     holders_change_7d: i64,
-    holders_historical: Vec<HistoricalValue>,
-
-    moon_score: u32,
-    level: Level,
-    risk_score: f64,
-    top_followers: Vec<FollowerProfile>,
-    followers: FollowerMetrics,
-    mentions: MentionMetrics,
+    holders_historical: Json<Vec<HistoricalValue>>,
+    top_followers: Json<Vec<FollowerProfile>>,
+    followers: Json<FollowerMetrics>,
+    mentions: Json<MentionMetrics>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,8 +37,8 @@ pub struct HistoricalValue {
     label: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "UPPERCASE")]
+#[derive(Debug, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "TEXT", rename_all = "UPPERCASE")]
 pub enum Level {
     Alpha,
     Beta,
@@ -48,27 +51,231 @@ pub struct FollowerProfile {
     profile_url: String,
     tag: String,
     name: String,
-    followers: u64,
+    followers: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FollowerMetrics {
-    follower_number: u64,
+    follower_number: i64,
     follower_number_change_7d: i64,
-    smarts: u64,
+    smarts: i64,
     smarts_change: i64,
+    #[serde(default)]
     follower_numbers_historical: Vec<HistoricalValue>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MentionMetrics {
-    mention_number: u64,
+    mention_number: i64,
     mention_number_change_7d: i64,
-    smarts: u64,
+    smarts: i64,
     smarts_change: i64,
     mention_numbers_historical: Vec<HistoricalValue>,
+}
+
+pub async fn query_token_analytics(
+    pool: &Pool<Postgres>,
+    address: &str,
+) -> Result<Option<TokenAnalytics>> {
+    let token =
+        sqlx::query_as::<_, TokenAnalytics>("SELECT * FROM token_analytics WHERE address = $1")
+            .bind(address)
+            .fetch_one(pool)
+            .await?;
+    Ok(Some(token))
+}
+
+pub async fn save_token_analytics(
+    pool: &Pool<Postgres>,
+    token: &TokenAnalytics,
+    address: &str,
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO token_analytics (
+            address, market_cap, market_cap_change_7d, market_cap_7d_historical_values,
+            volume_24h, volume_24h_change_7d, volume_historical,
+            liquidity, liquidity_change, liquidity_historical,
+            holders, holders_change_7d, holders_historical,
+            top_followers, followers, mentions
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        "#,
+    )
+    .bind(address)
+    .bind(token.market_cap)
+    .bind(token.market_cap_change_7d)
+    .bind(&token.market_cap_7d_historical_values)
+    .bind(token.volume_24h)
+    .bind(token.volume_24h_change_7d)
+    .bind(&token.volume_historical)
+    .bind(token.liquidity)
+    .bind(token.liquidity_change)
+    .bind(&token.liquidity_historical)
+    .bind(token.holders as i64)
+    .bind(token.holders_change_7d)
+    .bind(&token.holders_historical)
+    .bind(&token.top_followers)
+    .bind(&token.followers)
+    .bind(&token.mentions)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn fetch_token_detail_overview(
+    app: &AppState,
+    token_address: &str,
+) -> Result<TokenDetailOverview> {
+    app.bird_eye_client
+        .token_detail_overview(token_address)
+        .await
+}
+
+pub fn map_to_token_analytics(overview: &TokenDetailOverview) -> TokenAnalytics {
+    TokenAnalytics {
+        market_cap: overview.market_cap,
+        market_cap_change_7d: 0.0, // Không có dữ liệu 7 ngày trong API, để mặc định
+        market_cap_7d_historical_values: vec![].into(),
+        volume_24h: overview.v24h,
+        volume_24h_change_7d: overview.price_change_24h_percent,
+        volume_historical: vec![
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+        ]
+        .into(),
+        liquidity: overview.liquidity,
+        liquidity_change: 0.0,
+        liquidity_historical: vec![
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+        ]
+        .into(),
+        holders: overview.holder,
+        holders_change_7d: 0,
+        holders_historical: vec![
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+            HistoricalValue {
+                value: overview.v24h,
+                time: Some(Utc::now().timestamp()),
+                label: Some("24h".to_string()),
+            },
+        ]
+        .into(),
+        top_followers: vec![
+            FollowerProfile {
+                profile_url: "name".to_string(),
+                tag: "name".to_string(),
+                name: "name".to_string(),
+                followers: 44,
+            },
+            FollowerProfile {
+                profile_url: "name".to_string(),
+                tag: "name".to_string(),
+                name: "name".to_string(),
+                followers: 44,
+            },
+            FollowerProfile {
+                profile_url: "name".to_string(),
+                tag: "name".to_string(),
+                name: "name".to_string(),
+                followers: 44,
+            },
+            FollowerProfile {
+                profile_url: "name".to_string(),
+                tag: "name".to_string(),
+                name: "name".to_string(),
+                followers: 44,
+            },
+            FollowerProfile {
+                profile_url: "name".to_string(),
+                tag: "name".to_string(),
+                name: "name".to_string(),
+                followers: 44,
+            },
+        ]
+        .into(),
+        followers: Json(FollowerMetrics {
+            follower_number: 0,
+            follower_number_change_7d: 0,
+            smarts: 0,
+            smarts_change: 0,
+            follower_numbers_historical: vec![],
+        }),
+        mentions: Json(MentionMetrics {
+            mention_number: 0,
+            mention_number_change_7d: 0,
+            smarts: 0,
+            smarts_change: 0,
+            mention_numbers_historical: vec![],
+        }),
+    }
 }
 
 pub fn create_dummy_token_analysis() -> TokenAnalytics {
@@ -101,7 +308,8 @@ pub fn create_dummy_token_analysis() -> TokenAnalytics {
                 time: Some(1711586400),
                 label: None,
             },
-        ],
+        ]
+        .into(),
         volume_24h: 98_765.43,
         volume_24h_change_7d: 2.1,
         volume_historical: vec![
@@ -135,7 +343,8 @@ pub fn create_dummy_token_analysis() -> TokenAnalytics {
                 time: Some(1711500000),
                 label: Some("Day 1".to_string()),
             },
-        ],
+        ]
+        .into(),
         liquidity: 45_678.9,
         liquidity_change: 1.5,
         liquidity_historical: vec![
@@ -164,17 +373,16 @@ pub fn create_dummy_token_analysis() -> TokenAnalytics {
                 time: Some(1711500000),
                 label: None,
             },
-        ],
+        ]
+        .into(),
         holders: 5000,
         holders_change_7d: -200,
         holders_historical: vec![HistoricalValue {
             value: 5200.0,
             time: Some(1711500000),
             label: Some("Day 1".to_string()),
-        }],
-        moon_score: 960,
-        level: Level::Alpha,
-        risk_score: 10.96,
+        }]
+        .into(),
         top_followers: vec![
             FollowerProfile {
                 profile_url: "https://x.com/user1".to_string(),
@@ -206,8 +414,9 @@ pub fn create_dummy_token_analysis() -> TokenAnalytics {
                 name: "User Two".to_string(),
                 followers: 5_000,
             },
-        ],
-        followers: FollowerMetrics {
+        ]
+        .into(),
+        followers: Json(FollowerMetrics {
             follower_number: 25_000,
             follower_number_change_7d: 500,
             smarts: 3_000,
@@ -238,9 +447,10 @@ pub fn create_dummy_token_analysis() -> TokenAnalytics {
                     time: Some(1711500000),
                     label: Some("Day 1".to_string()),
                 },
-            ],
-        },
-        mentions: MentionMetrics {
+            ]
+            .into(),
+        }),
+        mentions: Json(MentionMetrics {
             mention_number: 1_200,
             mention_number_change_7d: 100,
             smarts: 150,
@@ -271,7 +481,8 @@ pub fn create_dummy_token_analysis() -> TokenAnalytics {
                     time: Some(1711500000),
                     label: Some("Day 1".to_string()),
                 },
-            ],
-        },
+            ]
+            .into(),
+        }),
     }
 }

@@ -12,3 +12,9 @@ pub struct HttpPaginationResponse<T: serde::Serialize> {
     pub last_updated: i64,
     pub total: i64,
 }
+
+#[derive(serde::Serialize)]
+pub struct ErrorResponse {
+    pub message: String,
+    pub response: Option<serde_json::Value>,
+}
