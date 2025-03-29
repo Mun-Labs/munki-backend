@@ -10,6 +10,7 @@ pub struct TokenDistributions {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Category {
+    Bubbles,
     Shrimp,
     Fish,
     Dolphin,
@@ -19,6 +20,11 @@ pub enum Category {
 
 pub fn create_dummy_token_distribution() -> Vec<TokenDistributions> {
     vec![
+        TokenDistributions {
+            category: Category::Bubbles,
+            percentage: 0.18,
+            amount: 4212,
+        },
         TokenDistributions {
             category: Category::Shrimp,
             percentage: 0.18,

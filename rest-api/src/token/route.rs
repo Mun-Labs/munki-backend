@@ -1,18 +1,23 @@
 // use std::path::Path;
 use crate::app::AppState;
+use crate::response::ErrorResponse;
 use crate::response::HttpResponse;
 use crate::time_util;
 use crate::token::{
-    background_job, create_dummy_token_analysis, create_dummy_token_distribution,
-    fetch_token_details, query_top_token_volume_history, token_bio, token_by_address,
-    TokenAnalytics, TokenDistributions, TokenOverview, TokenOverviewResponse, TokenSdk,
+    background_job, create_dummy_token_distribution, fetch_token_details, map_to_token_analytics,
+    query_token_analytics, query_top_token_volume_history, save_token_analytics, token_bio,
+    token_by_address, TokenAnalytics, TokenDistributions, TokenOverviewResponse, TokenSdk,
     TokenVolumeHistory,
 };
+use anyhow::Result;
 use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::Utc;
+use serde::Deserialize;
 use serde::Serialize;
+use sqlx::{Pool, Postgres};
+use validator::Validate;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,13 +66,7 @@ pub async fn mindshare(
     }))
 }
 
-// rust
-use anyhow::Result;
-use serde::Deserialize;
-use sqlx::{Pool, Postgres};
-use validator::Validate;
-
-use super::query_top_token_volume_history_by_date;
+use super::{fetch_token_detail_overview, query_top_token_volume_history_by_date};
 
 #[derive(Deserialize, Validate)]
 pub struct SearchQuery {
@@ -281,11 +280,52 @@ pub async fn get_token_bio(
 pub async fn get_token_analytics(
     State(app): State<AppState>,
     Path(address): Path<String>,
-) -> Result<Json<HttpResponse<TokenAnalytics>>, (StatusCode, String)> {
-    let resp: TokenAnalytics = create_dummy_token_analysis();
+) -> Result<Json<HttpResponse<TokenAnalytics>>, (StatusCode, Json<ErrorResponse>)> {
+    let token_result = match query_token_analytics(&app.pool, &address).await {
+        Ok(result) => result,
+        Err(e) => {
+            eprintln!("Failed to query token analytics: {}", e);
+            None
+        }
+    };
+
+    if let Some(token) = token_result {
+        return Ok(Json(HttpResponse {
+            code: 200,
+            response: token,
+            last_updated: Utc::now().timestamp(),
+        }));
+    }
+
+    let token_overview = fetch_token_detail_overview(&app, &address)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    message: "Failed to fetch_token_detail_overview".to_string(),
+                    response: Some(serde_json::json!({ "error": e.to_string() })),
+                }),
+            )
+        })?;
+
+    let token_analytics = map_to_token_analytics(&token_overview);
+
+    save_token_analytics(&app.pool, &token_analytics, &address)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    message: "Failed to save token analytics".to_string(),
+                    response: Some(serde_json::json!({ "error": e.to_string() })),
+                }),
+            )
+        })?;
+
     Ok(Json(HttpResponse {
         code: 200,
-        response: resp,
+        response: token_analytics,
         last_updated: Utc::now().timestamp(),
     }))
 }
