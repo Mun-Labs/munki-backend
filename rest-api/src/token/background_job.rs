@@ -310,21 +310,6 @@ pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Resul
     .fetch_one(pool)
     .await?;
 
-    let metric: TokenData = TokenData {
-        update_unix_time: Utc::now().timestamp(),
-        update_human_time: Utc::now().to_rfc3339(),
-        volume_usd: token.v24h_usd.unwrap_or_default(),
-        volume_change_percent: token.v24h_change_percent.unwrap_or_default(),
-        price_change_percent: token.price_change24h_percent.unwrap_or_default(),
-        price: token.price.unwrap_or_default(),
-    };
-
-    store_metric_in_db(pool, &metric, &token.address).await?;
-
-    let volume24h = token.v24h_usd
-        .map(|v| BigDecimal::from_f64(v).unwrap_or_default())
-        .unwrap_or_default();
-    resp.volume24h = upsert_volume24h(pool, &resp.token_address, volume24h).await?;
     Ok(resp)
 }
 
@@ -343,7 +328,7 @@ pub async fn upsert_volume24h(pool: &Pool<Postgres>, token_address: &str, volume
     .bind(time_util::get_start_of_day(Utc::now()).timestamp())
     .fetch_one(pool)
     .await?;
-    Ok((resp))
+    Ok(resp)
 }
 
 async fn upsert_safe_score(

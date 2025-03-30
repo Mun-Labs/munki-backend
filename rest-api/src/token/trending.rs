@@ -6,6 +6,7 @@ use moka::ops::compute::Op;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres, QueryBuilder};
 use std::collections::HashMap;
+use anyhow::Error;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]

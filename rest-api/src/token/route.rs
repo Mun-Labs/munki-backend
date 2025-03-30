@@ -2,15 +2,10 @@
 use crate::app::AppState;
 use crate::response::HttpResponse;
 use crate::time_util;
-use crate::token::{
-    background_job, create_dummy_token_analysis, create_dummy_token_distribution,
-    fetch_token_details, query_top_token_volume_history, token_bio, token_by_address,
-    TokenAnalytics, TokenDistributions, TokenOverview, TokenOverviewResponse, TokenSdk,
-    TokenVolumeHistory,
-};
+use crate::token::{background_job, create_dummy_token_analysis, create_dummy_token_distribution, fetch_token_details, query_top_token_volume_history, token_bio, token_by_address, upsert_volume24h, TokenAnalytics, TokenDistributions, TokenOverview, TokenOverviewResponse, TokenSdk, TokenVolumeHistory};
 use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
-use bigdecimal::{BigDecimal, ToPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use chrono::Utc;
 use serde::Serialize;
 
@@ -67,7 +62,8 @@ use log::info;
 use serde::Deserialize;
 use sqlx::{Pool, Postgres};
 use validator::Validate;
-
+use crate::price::store_metric_in_db;
+use crate::thirdparty::TokenData;
 use super::query_top_token_volume_history_by_date;
 
 #[derive(Deserialize, Validate)]
@@ -298,14 +294,35 @@ pub async fn get_token_bio(
     let missing = token_by_address(&app.pool, vec![address.clone()])
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let resp = if !missing.is_empty() {
+    let resp: TokenOverviewResponse = if !missing.is_empty() {
         let token = fetch_token_details(&app, &address)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-        background_job::insert_token(&app.pool, &token)
+        let metric: TokenData = TokenData {
+            update_unix_time: Utc::now().timestamp(),
+            update_human_time: Utc::now().to_rfc3339(),
+            volume_usd: token.v24h_usd.unwrap_or_default(),
+            volume_change_percent: token.v24h_change_percent.unwrap_or_default(),
+            price_change_percent: token.price_change24h_percent.unwrap_or_default(),
+            price: token.price.unwrap_or_default(),
+        };
+        let mut new_token = background_job::insert_token(&app.pool, &token)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        store_metric_in_db(&app.pool, &metric, &token.address)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        let vol = token.v24h_usd
+            .map(|v| BigDecimal::from_f64(v).unwrap_or_default())
+            .unwrap_or_default();
+        new_token.volume24h =upsert_volume24h(&app.pool, &token.address, vol)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        new_token
     } else {
         token_bio(&app.pool, &address)
             .await
