@@ -12,6 +12,7 @@ use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::Utc;
+use log::debug;
 use serde::Serialize;
 
 #[derive(serde::Serialize)]
@@ -65,6 +66,7 @@ pub async fn mindshare(
 use anyhow::Result;
 use serde::Deserialize;
 use sqlx::{Pool, Postgres};
+use tracing::{error, info};
 use validator::Validate;
 
 use super::query_top_token_volume_history_by_date;
@@ -208,6 +210,20 @@ pub async fn search_token(
     if let Err(validation_errors) = query.validate() {
         return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
     }
+
+    let search_result = app
+        .bird_eye_client
+        .search(&query.q)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    info!("inserting token {search_result:?}");
+    for token in search_result.iter() {
+        if let Err(e) = background_job::insert_token(&app.pool, token).await {
+            error!("insert token {} error: {}", token.address, e);
+        };
+    }
+
     let tokens = search_tokens(&app.pool, &query.q, query.limit, query.offset)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?

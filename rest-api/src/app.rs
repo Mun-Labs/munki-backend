@@ -15,9 +15,6 @@ use axum::{
 };
 use chrono::Utc;
 use envconfig::Envconfig;
-use helius::client::HeliusAsyncSolanaClient;
-use helius::types::Cluster;
-use helius::Helius;
 use http_body_util::BodyExt;
 use reqwest::Client;
 use sqlx::{PgPool, Pool, Postgres};

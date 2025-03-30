@@ -1,4 +1,5 @@
 use crate::app;
+use crate::thirdparty::token_search::TokenSearchItem;
 use crate::token::{background_job, fetch_token_details};
 use axum::http::StatusCode;
 use bigdecimal::BigDecimal;
@@ -74,6 +75,7 @@ pub trait TokenSdk {
     async fn overview(&self, address: &str) -> Result<TokenOverview, anyhow::Error>;
 
     async fn holders(&self, address: &str) -> Result<Vec<TokenHolder>, anyhow::Error>;
+    async fn search(&self, address: &str) -> Result<Vec<TokenOverview>, anyhow::Error>;
 }
 
 pub async fn upsert_token_meta(
