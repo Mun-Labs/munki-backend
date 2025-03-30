@@ -19,7 +19,7 @@ pub struct Trending {
     pub symbol: String,
     #[serde(rename = "volume24hUSD")]
     pub volume24h_usd: f64,
-    pub rank: u32,
+    pub rank: i32,
     pub price: f64,
 }
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -54,6 +54,16 @@ pub struct TokenOverview {
     pub holder: Option<f64>,
     #[serde(rename = "websiteURL")]
     pub website_url: Option<String>,
+    #[serde(rename = "v24h")]
+    pub v_24h: f64,
+    #[serde(rename = "marketcapChange7d")]
+    pub market_cap_change_7d: f64, // need create table to hold
+    #[serde(rename = "v24hChange7d")]
+    pub v_24h_change_7d: f64, // need create table to hold
+    #[serde(rename = "liquidityChange")]
+    pub liquidity_change: f64, // need create table to hold
+    #[serde(rename = "holdersChange7d")]
+    pub holders_change_7d: i64, // need create table to hold
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -66,6 +76,22 @@ pub struct TokenHolder {
     pub ui_amount: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Extensions {
+    #[serde(rename = "coingeckoId")]
+    pub coingecko_id: Option<String>,
+    #[serde(rename = "serumV3Usdc")]
+    pub serum_v3_usdc: Option<String>,
+    #[serde(rename = "serumV3Usdt")]
+    pub serum_v3_usdt: Option<String>,
+    pub website: Option<String>,
+    pub telegram: Option<String>,
+    pub twitter: Option<String>,
+    pub description: Option<String>,
+    pub discord: Option<String>,
+    pub medium: Option<String>,
+}
+
 pub trait TokenSdk {
     async fn get_trending(&self, offset: i32, limit: i32) -> Result<Vec<Trending>, anyhow::Error>;
     async fn token_meta_multiple(
@@ -73,7 +99,10 @@ pub trait TokenSdk {
         addresses: Vec<String>,
     ) -> Result<Vec<TokenMetadata>, anyhow::Error>;
     async fn overview(&self, address: &str) -> Result<TokenOverview, anyhow::Error>;
-
+    // async fn token_detail_overview(
+    //     &self,
+    //     address: &str,
+    // ) -> Result<TokenDetailOverview, anyhow::Error>;
     async fn holders(&self, address: &str) -> Result<Vec<TokenHolder>, anyhow::Error>;
     async fn search(&self, address: &str) -> Result<Vec<TokenOverview>, anyhow::Error>;
 }

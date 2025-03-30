@@ -42,6 +42,11 @@ impl From<TokenSearchItem> for TokenOverview {
             total_supply: Some(value.supply),
             holder: None,
             website_url: None,
+            v_24h: value.volume_24h_usd,
+            market_cap_change_7d: 0.00,
+            v_24h_change_7d: 0.00,
+            liquidity_change: 0.00,
+            holders_change_7d: 0,
         }
     }
 }
