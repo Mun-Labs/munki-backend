@@ -1,7 +1,5 @@
 use crate::price::{PriceSdk, TimeFilters};
-use crate::token::{
-    TokenDetailOverview, TokenHolder, TokenMetadata, TokenOverview, TokenSdk, Trending,
-};
+use crate::token::{TokenHolder, TokenMetadata, TokenOverview, TokenSdk, Trending};
 use anyhow::Error;
 use chrono::{Duration, Timelike, Utc};
 use reqwest::Client;
@@ -154,40 +152,6 @@ impl TokenSdk for BirdEyeClient {
         }
 
         Ok(resp.json::<BirdEyeResponse<TokenOverview>>().await?.data)
-    }
-
-    async fn token_detail_overview(
-        &self,
-        address: &str,
-    ) -> Result<TokenDetailOverview, anyhow::Error> {
-        let url = format!("{}/defi/token_overview", self.base_url);
-        let resp = self
-            .client
-            .get(url)
-            .query(&[("address", address)])
-            .header("X-API-KEY", &self.api_key)
-            .header("accept", "application/json")
-            .header("x-chain", "solana")
-            .send()
-            .await?;
-
-        let status = resp.status();
-        let body = resp.text().await?;
-
-        if !status.is_success() {
-            return Err(anyhow::anyhow!(
-                "Request failed with status: {} - Body: {}",
-                status,
-                body
-            ));
-        }
-
-        let response: BirdEyeResponse<TokenDetailOverview> =
-            serde_json::from_str(&body).map_err(|e| {
-                anyhow::anyhow!("Failed to deserialize response: {} - Body: {}", e, body)
-            })?;
-
-        Ok(response.data)
     }
 
     async fn holders(&self, address: &str) -> Result<Vec<TokenHolder>, Error> {

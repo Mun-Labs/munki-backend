@@ -6,8 +6,8 @@ use crate::time_util;
 use crate::token::{
     background_job, create_dummy_token_distribution, fetch_token_details, map_to_token_analytics,
     query_token_analytics, query_top_token_volume_history, save_token_analytics, token_bio,
-    token_by_address, TokenAnalytics, TokenDistributions, TokenOverviewResponse, TokenSdk,
-    TokenVolumeHistory,
+    token_by_address, TokenAnalytics, TokenAnalyticsResponse, TokenDistributions,
+    TokenOverviewResponse, TokenSdk, TokenVolumeHistory,
 };
 use anyhow::Result;
 use axum::extract::{Path, Query, State};
@@ -280,7 +280,7 @@ pub async fn get_token_bio(
 pub async fn get_token_analytics(
     State(app): State<AppState>,
     Path(address): Path<String>,
-) -> Result<Json<HttpResponse<TokenAnalytics>>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<HttpResponse<TokenAnalyticsResponse>>, (StatusCode, Json<ErrorResponse>)> {
     let token_result = match query_token_analytics(&app.pool, &address).await {
         Ok(result) => result,
         Err(e) => {
@@ -288,30 +288,25 @@ pub async fn get_token_analytics(
             None
         }
     };
-
     if let Some(token) = token_result {
         return Ok(Json(HttpResponse {
             code: 200,
-            response: token,
+            response: token.into(),
             last_updated: Utc::now().timestamp(),
         }));
     }
 
-    let token_overview = fetch_token_detail_overview(&app, &address)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    message: "Failed to fetch_token_detail_overview".to_string(),
-                    response: Some(serde_json::json!({ "error": e.to_string() })),
-                }),
-            )
-        })?;
+    let token_overview = fetch_token_details(&app, &address).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                message: "Failed to fetch_token_detail_overview".to_string(),
+                response: Some(serde_json::json!({ "error": e.to_string() })),
+            }),
+        )
+    })?;
 
-    let token_analytics = map_to_token_analytics(&token_overview);
-
-    save_token_analytics(&app.pool, &token_analytics, &address)
+    save_token_analytics(&app.pool, &(&token_overview).into(), &address)
         .await
         .map_err(|e| {
             (
@@ -323,9 +318,12 @@ pub async fn get_token_analytics(
             )
         })?;
 
+    //for temperate solution - delete after have enough table to combine
+    let token_analytics_response = map_to_token_analytics(&token_overview);
+
     Ok(Json(HttpResponse {
         code: 200,
-        response: token_analytics,
+        response: token_analytics_response,
         last_updated: Utc::now().timestamp(),
     }))
 }
