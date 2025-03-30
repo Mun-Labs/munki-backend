@@ -33,7 +33,7 @@ impl From<TokenSearchItem> for TokenOverview {
             logo_uri: Some(value.logo_uri),
             marketcap: Some(value.market_cap),
             price: Some(value.price),
-            //volume24h: Some(value.volume_24h_usd),
+            volume24h: Some(value.volume_24h_usd),
             price_change24h_percent: Some(value.price_change_24h_percent),
             decimals: value.decimals as u64,
             extensions: None,

@@ -4,15 +4,13 @@ use crate::response::HttpResponse;
 use crate::time_util;
 use crate::token::{
     background_job, create_dummy_token_analysis, create_dummy_token_distribution,
-    fetch_token_details, query_top_token_volume_history, token_bio, token_by_address,
-    TokenAnalytics, TokenDistributions, TokenOverview, TokenOverviewResponse, TokenSdk,
-    TokenVolumeHistory,
+    fetch_token_details, token_bio, token_by_address, TokenAnalytics, TokenDistributions,
+    TokenOverviewResponse, TokenSdk, TokenVolumeHistory,
 };
 use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
-use bigdecimal::{BigDecimal, ToPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use chrono::Utc;
-use log::debug;
 use serde::Serialize;
 
 #[derive(serde::Serialize)]
@@ -69,7 +67,7 @@ use sqlx::{Pool, Postgres};
 use tracing::{error, info};
 use validator::Validate;
 
-use super::query_top_token_volume_history_by_date;
+use super::{query_top_token_volume_history_by_date, TokenOverview};
 
 #[derive(Deserialize, Validate)]
 pub struct SearchQuery {
@@ -126,6 +124,41 @@ impl From<&Token> for TokenResponse {
                 .unwrap_or_default(),
             price24hchange: value
                 .price24hchange
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
+            price: value
+                .price
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
+            volume24h: value
+                .volume24h
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl From<&TokenOverview> for TokenResponse {
+    fn from(value: &TokenOverview) -> Self {
+        Self {
+            token_address: value.address.clone(),
+            name: value.name.clone(),
+            symbol: value.symbol.clone(),
+            logo_uri: value.logo_uri.clone(),
+            marketcap: value
+                .marketcap
+                .clone()
+                .unwrap_or_default()
+                .to_f64()
+                .unwrap_or_default(),
+            price24hchange: value
+                .price_change24h_percent
                 .clone()
                 .unwrap_or_default()
                 .to_f64()
@@ -219,23 +252,51 @@ pub async fn search_token(
 
     info!("inserting token {search_result:?}");
     for token in search_result.iter() {
-        if let Err(e) = background_job::insert_token(&app.pool, token).await {
+        let TokenOverview {
+            address,
+            decimals,
+            symbol,
+            name,
+            logo_uri,
+            price,
+            history24h_price,
+            price_change24h_percent,
+            total_supply,
+            marketcap,
+            volume24h,
+            ..
+        } = token;
+        if let Err(e) = background_job::insert_token_with_params(
+            &app.pool,
+            address,
+            name,
+            symbol,
+            logo_uri.clone().unwrap_or_default().as_str(),
+            total_supply.unwrap_or_default(),
+            marketcap.unwrap_or_default(),
+            history24h_price.unwrap_or_default(),
+            price_change24h_percent.unwrap_or_default(),
+            price.unwrap_or_default(),
+            *decimals,
+            None,
+            "",
+            volume24h.unwrap_or_default(),
+        )
+        .await
+        {
             error!("insert token {} error: {}", token.address, e);
         };
     }
 
-    let tokens = search_tokens(&app.pool, &query.q, query.limit, query.offset)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .iter()
-        .map(TokenResponse::from)
-        .collect();
+    let tokens = search_result.iter().map(TokenResponse::from).collect();
+
     Ok(Json(HttpResponse {
         code: 200,
         response: tokens,
         last_updated: Utc::now().timestamp(),
     }))
 }
+
 pub async fn search_tokens(
     pool: &Pool<Postgres>,
     search: &str,
@@ -295,8 +356,8 @@ pub async fn get_token_bio(
 }
 
 pub async fn get_token_analytics(
-    State(app): State<AppState>,
-    Path(address): Path<String>,
+    State(_app): State<AppState>,
+    Path(_address): Path<String>,
 ) -> Result<Json<HttpResponse<TokenAnalytics>>, (StatusCode, String)> {
     let resp: TokenAnalytics = create_dummy_token_analysis();
     Ok(Json(HttpResponse {
@@ -307,8 +368,8 @@ pub async fn get_token_analytics(
 }
 
 pub async fn get_token_distributions(
-    State(app): State<AppState>,
-    Path(address): Path<String>,
+    State(_app): State<AppState>,
+    Path(_address): Path<String>,
 ) -> Result<Json<HttpResponse<Vec<TokenDistributions>>>, (StatusCode, String)> {
     let resp: Vec<TokenDistributions> = create_dummy_token_distribution();
 

@@ -1,9 +1,4 @@
-use crate::app;
-use crate::thirdparty::token_search::TokenSearchItem;
-use crate::token::{background_job, fetch_token_details};
-use axum::http::StatusCode;
 use bigdecimal::BigDecimal;
-use moka::ops::compute::Op;
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres, QueryBuilder};
 use std::collections::HashMap;
@@ -54,6 +49,7 @@ pub struct TokenOverview {
     pub holder: Option<f64>,
     #[serde(rename = "websiteURL")]
     pub website_url: Option<String>,
+    pub volume24h: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

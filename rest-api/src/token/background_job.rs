@@ -271,6 +271,56 @@ pub async fn fetch_token_details(app: &AppState, token_address: &str) -> Result<
 }
 
 // Insert token data into the tokens table.
+pub async fn insert_token_with_params(
+    pool: &Pool<Postgres>,
+    address: &str,
+    name: &str,
+    symbol: &str,
+    logo_uri: &str,
+    total_supply: f64,
+    marketcap: f64,
+    history24h_price: f64,
+    price_change24h_percent: f64,
+    price: f64,
+    decimals: u64,
+    extensions: Option<serde_json::Value>,
+    website_url: &str,
+    volume_24h: f64,
+) -> Result<TokenOverviewResponse> {
+    let token = sqlx::query_as::<_, TokenOverviewResponse>(
+        "
+    INSERT INTO
+    tokens (token_address, name, symbol, image_url, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url, volume_24h)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    ON CONFLICT (token_address) do UPDATE SET
+    total_supply = EXCLUDED.total_supply,
+    marketcap = EXCLUDED.marketcap,
+    price_change24h_percent = EXCLUDED.price_change24h_percent,
+    history24h_price = EXCLUDED.history24h_price,
+        decimals = EXCLUDED.decimals,
+    current_price = EXCLUDED.current_price,
+    metadata = EXCLUDED.metadata,
+    volume_24h = EXCLUDED.volume_24h
+     RETURNING token_address, name, symbol, image_url as logo_uri, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url",
+    )
+    .bind(address)
+    .bind(name)
+    .bind(symbol)
+    .bind(logo_uri)
+    .bind(total_supply)
+    .bind(marketcap)
+    .bind(history24h_price)
+    .bind(price_change24h_percent)
+    .bind(price)
+    .bind(decimals as i64)
+    .bind(Json(extensions))
+    .bind(website_url)
+    .bind(volume_24h)
+    .fetch_one(pool)
+    .await?;
+    Ok(token)
+}
+// Insert token data into the tokens table.
 pub async fn insert_token(
     pool: &Pool<Postgres>,
     token: &TokenOverview,

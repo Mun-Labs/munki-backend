@@ -189,11 +189,11 @@ impl TokenSdk for BirdEyeClient {
             .query(&[
                 ("chain", "solana"),
                 ("target", "all"),
-                ("search_mode", "exact"),
+                ("search_mode", "fuzzy"),
                 ("search_by", "address"),
                 ("sort_by", "volume_24h_usd"),
                 ("sort_type", "desc"),
-                ("verify_token", "true"),
+                ("verify_token", "false"),
                 ("offset", "0"),
                 ("limit", "20"),
                 ("keyword", address),
