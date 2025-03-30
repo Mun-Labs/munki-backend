@@ -1,4 +1,5 @@
 use crate::app;
+use crate::thirdparty::token_search::TokenSearchItem;
 use crate::token::{background_job, fetch_token_details};
 use axum::http::StatusCode;
 use bigdecimal::BigDecimal;
@@ -34,7 +35,7 @@ pub struct TokenMetadata {
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TokenOverview {
     pub address: String,
-    pub decimals: i64,
+    pub decimals: u64,
     pub symbol: String,
     pub name: String,
     pub extensions: Option<HashMap<String, Option<String>>>,
@@ -103,6 +104,7 @@ pub trait TokenSdk {
     //     address: &str,
     // ) -> Result<TokenDetailOverview, anyhow::Error>;
     async fn holders(&self, address: &str) -> Result<Vec<TokenHolder>, anyhow::Error>;
+    async fn search(&self, address: &str) -> Result<Vec<TokenOverview>, anyhow::Error>;
 }
 
 pub async fn upsert_token_meta(

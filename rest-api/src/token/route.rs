@@ -1,4 +1,5 @@
 // use std::path::Path;
+use super::{fetch_token_detail_overview, query_top_token_volume_history_by_date};
 use crate::app::AppState;
 use crate::response::ErrorResponse;
 use crate::response::HttpResponse;
@@ -14,10 +15,13 @@ use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::Utc;
+use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
 use sqlx::{Pool, Postgres};
 use validator::Validate;
+// rust
+use tracing::{error, info};
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,8 +69,6 @@ pub async fn mindshare(
         last_updated: Utc::now().timestamp(),
     }))
 }
-
-use super::{fetch_token_detail_overview, query_top_token_volume_history_by_date};
 
 #[derive(Deserialize, Validate)]
 pub struct SearchQuery {
@@ -207,6 +209,20 @@ pub async fn search_token(
     if let Err(validation_errors) = query.validate() {
         return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
     }
+
+    let search_result = app
+        .bird_eye_client
+        .search(&query.q)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    info!("inserting token {search_result:?}");
+    for token in search_result.iter() {
+        if let Err(e) = background_job::insert_token(&app.pool, token).await {
+            error!("insert token {} error: {}", token.address, e);
+        };
+    }
+
     let tokens = search_tokens(&app.pool, &query.q, query.limit, query.offset)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?

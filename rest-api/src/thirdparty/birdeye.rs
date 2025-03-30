@@ -1,11 +1,13 @@
 use crate::price::{PriceSdk, TimeFilters};
-use crate::token::{TokenHolder, TokenMetadata, TokenOverview, TokenSdk, Trending};
+use crate::token::{TokenDetail, TokenHolder, TokenMetadata, TokenOverview, TokenSdk, Trending};
 use anyhow::Error;
 use chrono::{Duration, Timelike, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::info;
+
+use super::token_search::TokenSearchResult;
 
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone)]
@@ -177,6 +179,51 @@ impl TokenSdk for BirdEyeClient {
 
         let body = serde_json::from_str::<BirdEyeResponse<ItemsResponse<TokenHolder>>>(&resp)?;
         Ok(body.data.items)
+    }
+
+    async fn search(&self, address: &str) -> Result<Vec<TokenOverview>, anyhow::Error> {
+        let url = format!("{}/defi/v3/search", self.base_url);
+        let resp = self
+            .client
+            .get(url)
+            .query(&[
+                ("chain", "solana"),
+                ("target", "all"),
+                ("search_mode", "exact"),
+                ("search_by", "address"),
+                ("sort_by", "volume_24h_usd"),
+                ("sort_type", "desc"),
+                ("verify_token", "true"),
+                ("offset", "0"),
+                ("limit", "20"),
+                ("keyword", address),
+            ])
+            .header("X-API-KEY", &self.api_key)
+            .header("accept", "application/json")
+            .header("x-chain", "solana")
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Request failed with status: {}",
+                resp.status()
+            ));
+        }
+
+        let resp = resp.text().await?;
+
+        let body =
+            serde_json::from_str::<BirdEyeResponse<ItemsResponse<TokenSearchResult>>>(&resp)?;
+        Ok(body
+            .data
+            .items
+            .into_iter()
+            .flat_map(|a| {
+                let a: Vec<TokenOverview> = a.into();
+                a
+            })
+            .collect())
     }
 }
 
