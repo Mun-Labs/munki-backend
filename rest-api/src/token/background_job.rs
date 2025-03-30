@@ -1,6 +1,6 @@
 use crate::app::AppState;
-use crate::thirdparty::{self, MunScoreSdk};
-use crate::token::{TokenOverview, TokenOverviewResponse, TokenSdk};
+use crate::thirdparty::{MunScoreSdk, TokenData};
+use crate::token::{trending_token, upsert_daily_volume, TokenOverview, TokenOverviewResponse, TokenSdk, Trending};
 use anyhow::Result;
 use log::{error, info};
 use sqlx::types::Json;
@@ -8,7 +8,14 @@ use sqlx::{PgPool, Pool, Postgres};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use bigdecimal::{BigDecimal, FromPrimitive};
+use chrono::Utc;
+use futures::TryFutureExt;
+use moka::ops::compute::Op;
 use tokio::time::sleep;
+use crate::price::store_metric_in_db;
+use crate::{thirdparty, time_util};
+use crate::volume::upsert_metrics;
 
 #[derive(Debug, sqlx::FromRow)]
 struct TokenRow {}
@@ -271,11 +278,9 @@ pub async fn fetch_token_details(app: &AppState, token_address: &str) -> Result<
 }
 
 // Insert token data into the tokens table.
-pub async fn insert_token(
-    pool: &Pool<Postgres>,
-    token: &TokenOverview,
-) -> Result<TokenOverviewResponse> {
-    let token = sqlx::query_as::<_, TokenOverviewResponse>(
+pub async fn insert_token(pool: &Pool<Postgres>, token: &TokenOverview) -> Result<TokenOverviewResponse> {
+    let mut resp = sqlx::query_as::<_, TokenOverviewResponse>(
+
         "
     INSERT INTO
     tokens (token_address, name, symbol, image_url, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url)
@@ -304,7 +309,26 @@ pub async fn insert_token(
     .bind(&token.website_url)
     .fetch_one(pool)
     .await?;
-    Ok(token)
+
+    Ok(resp)
+}
+
+pub async fn upsert_volume24h(pool: &Pool<Postgres>, token_address: &str, volume24h: BigDecimal) -> Result<Option<BigDecimal>, sqlx::Error> {
+    let resp = sqlx::query_scalar(
+        r#"
+        INSERT INTO token_volume_history (token_address, volume24h, record_date)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (token_address, record_date) DO UPDATE
+        SET volume24h = EXCLUDED.volume24h
+        RETURNING volume24h
+        "#,
+    )
+    .bind(token_address)
+    .bind(volume24h)
+    .bind(time_util::get_start_of_day(Utc::now()).timestamp())
+    .fetch_one(pool)
+    .await?;
+    Ok(resp)
 }
 
 async fn upsert_safe_score(
