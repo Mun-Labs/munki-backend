@@ -1,5 +1,5 @@
 use crate::price::{PriceSdk, TimeFilters};
-use crate::token::{TokenDetail, TokenHolder, TokenMetadata, TokenOverview, TokenSdk, Trending};
+use crate::token::{TokenHolder, TokenMetadata, TokenOverview, TokenSdk, Trending};
 use anyhow::Error;
 use chrono::{Duration, Timelike, Utc};
 use reqwest::Client;
