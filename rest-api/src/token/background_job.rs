@@ -351,7 +351,6 @@ pub async fn insert_token(
     .bind(token.decimals as i64)
     .bind(Json(&token.extensions))
     .bind(&token.website_url)
-    .bind(token.volume24h)
     .bind(token.holder)
     .fetch_one(pool)
     .await?;

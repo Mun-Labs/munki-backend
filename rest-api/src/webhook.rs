@@ -104,6 +104,10 @@ pub async fn webhook_handler(
                     continue;
                 }
 
+                if transfer.mint == SOL_ADDRESS {
+                    continue;
+                }
+
                 let result = token_watch_exists(&app.pool, &transfer.mint).await;
                 match result {
                     Ok(exists) if !exists => {

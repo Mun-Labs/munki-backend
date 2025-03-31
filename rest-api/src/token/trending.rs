@@ -51,7 +51,7 @@ pub struct TokenOverview {
     pub total_supply: Option<f64>,
     #[serde(rename = "marketcap")]
     pub marketcap: Option<f64>,
-    pub holder: Option<f64>,
+    pub holder: Option<i32>,
     #[serde(rename = "websiteURL")]
     pub website_url: Option<String>,
     pub volume24h: Option<f64>,
