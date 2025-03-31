@@ -49,7 +49,7 @@ pub struct TokenOverview {
     pub price_change24h_percent: Option<f64>,
     #[serde(rename = "totalSupply")]
     pub total_supply: Option<f64>,
-    #[serde(rename = "marketcap")]
+    #[serde(rename = "marketCap")]
     pub marketcap: Option<f64>,
     pub holder: Option<i32>,
     #[serde(rename = "websiteURL")]
@@ -247,6 +247,8 @@ pub struct TokenOverviewResponse {
     pub marketcap: Option<BigDecimal>,
     pub history24h_price: Option<BigDecimal>,
     pub price_change24h_percent: Option<BigDecimal>,
+    pub holders: Option<i32>,
+    pub liquidity: Option<BigDecimal>,
 }
 
 pub async fn token_bio(
@@ -268,12 +270,14 @@ pub async fn token_bio(
             total_supply,
             marketcap,
             history24h_price,
-            price_change24h_percent
+            price_change24h_percent,
+            holders,
+            liquidity
         FROM tokens
         WHERE token_address = $1
         ",
     )
-    .bind(&address)
+    .bind(address)
     .fetch_one(pool)
     .await?;
     Ok(token)
