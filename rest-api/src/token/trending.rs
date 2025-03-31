@@ -14,8 +14,13 @@ pub struct Trending {
     pub symbol: String,
     #[serde(rename = "volume24hUSD")]
     pub volume24h_usd: f64,
+    pub marketcap: f64,
+    #[serde(rename = "volume24hChangePercent")]
+    pub volum24h_change_percent: Option<f64>,
     pub rank: u32,
     pub price: f64,
+    #[serde(rename = "price24hChangePercent")]
+    pub price24h_change_percent: Option<f64>,
 }
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TokenMetadata {
@@ -79,7 +84,7 @@ pub async fn upsert_token_meta(
     trending_list: &Vec<Trending>,
 ) -> Result<(), sqlx::Error> {
     let mut qb = QueryBuilder::new(
-        "INSERT INTO tokens (token_address, name, symbol, decimals, image_url, current_price, updated_at) ",
+        "INSERT INTO tokens (token_address, name, symbol, decimals, image_url, current_price, updated_at, marketcap, volume_24h, volume_24h_change) ",
     );
 
     qb.push_values(trending_list.iter(), |mut b, item| {
@@ -89,7 +94,10 @@ pub async fn upsert_token_meta(
             .push_bind(item.decimals)
             .push_bind(&item.logo_uri)
             .push_bind(item.price)
-            .push("NOW()");
+            .push("NOW()")
+            .push(item.marketcap)
+            .push_bind(item.volume24h_usd)
+            .push_bind(item.volum24h_change_percent);
     });
 
     qb.push(
@@ -99,6 +107,9 @@ pub async fn upsert_token_meta(
          decimals = EXCLUDED.decimals, \
          image_url = EXCLUDED.image_url, \
          current_price = EXCLUDED.current_price, \
+         volume_24h = EXCLUDED.volume_24h, \
+         marketcap = EXCLUDED.marketcap, \
+         volume_24h_change = EXCLUDED.volume_24h_change, \
          updated_at = NOW()",
     );
 
@@ -155,7 +166,7 @@ pub async fn query_top_token_volume_history_by_date(
         t.image_url AS logo_uri,
         t.name as name,
         t.symbol as symbol,
-        tm.volume_change_percent as volume24h_percent
+        t.volume_24h_change as volume24h_percent
         FROM token_volume_history tvh
         INNER JOIN tokens t ON t.token_address = tvh.token_address
         LEFT JOIN token_metrics tm ON tm.token_address = tvh.token_address

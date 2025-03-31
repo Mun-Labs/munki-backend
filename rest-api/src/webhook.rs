@@ -76,6 +76,7 @@ pub async fn webhook_handler(
         }
     };
     info!("Wallets from payload: {:?}", wallets);
+    let mut token_addresses = vec![];
 
     // Process each transaction against the wallets retrieved from the database.
     for transaction in payload {
@@ -87,11 +88,7 @@ pub async fn webhook_handler(
                     .from_user_account
                     .clone()
                     .unwrap_or_default();
-                if wallets
-                    .iter()
-                    .find(|a| a.wallet_address == from_user)
-                    .is_some()
-                {
+                if wallets.iter().any(|a| a.wallet_address == from_user) {
                     action = ("sell".to_string(), from_user);
                 }
 
@@ -100,11 +97,7 @@ pub async fn webhook_handler(
                     .to_user_account
                     .clone()
                     .unwrap_or_default();
-                if wallets
-                    .iter()
-                    .find(|a| a.wallet_address == to_user)
-                    .is_some()
-                {
+                if wallets.iter().any(|a| a.wallet_address == to_user) {
                     action = ("buy".to_string(), to_user);
                 }
                 if action.0 == "".to_string() {
@@ -125,6 +118,7 @@ pub async fn webhook_handler(
                 }
 
                 // Adjust field extraction as needed.
+                token_addresses.push(transfer.mint.clone());
                 let token_address = transfer.mint.clone();
                 let amount = transfer.token_amount.as_f64().unwrap_or_default();
                 let block_time = transaction.timestamp;
@@ -145,7 +139,6 @@ pub async fn webhook_handler(
                 {
                     error!("Failed to upsert transaction: {:?}", e);
                 }
-
             }
         }
     }
@@ -157,9 +150,9 @@ pub async fn webhook_handler(
     //         info!("no token to fetch");
     //     }
     //     Ok(missing) => {
-    //         if let Err(err) = batch_insert_tokens_into_watch(&app, missing.as_slice()).await {
-    //             error!("insert token watch failed: {:?}", err);
-    //         }
+    if let Err(err) = batch_insert_tokens_into_watch(&app, token_addresses.as_slice()).await {
+        error!("insert token watch failed: {:?}", err);
+    }
     //     }
     // }
     "Webhook received"
@@ -173,21 +166,21 @@ pub async fn token_watch_exists(pool: &PgPool, token_address: &str) -> Result<bo
             .await?;
     Ok(exists)
 }
-// pub async fn batch_insert_tokens_into_watch(
-//     app: &AppState,
-//     token_addresses: &[String],
-// ) -> anyhow::Result<()> {
-//     // Using UNNEST to convert the slice to a set of rows for batch insertion.
-//     sqlx::query(
-//         "INSERT INTO token_watch (token_address)
-//          SELECT UNNEST($1::text[])
-//          ON CONFLICT (token_address) DO NOTHING",
-//     )
-//     .bind(token_addresses)
-//     .execute(&app.pool)
-//     .await?;
-//     Ok(())
-// }
+pub async fn batch_insert_tokens_into_watch(
+    app: &AppState,
+    token_addresses: &[String],
+) -> anyhow::Result<()> {
+    // Using UNNEST to convert the slice to a set of rows for batch insertion.
+    sqlx::query(
+        "INSERT INTO token_watch (token_address)
+          SELECT UNNEST($1::text[])
+          ON CONFLICT (token_address) DO NOTHING",
+    )
+    .bind(token_addresses)
+    .execute(&app.pool)
+    .await?;
+    Ok(())
+}
 
 // async fn fetch_missing(app: &AppState, missing: Vec<String>) {
 //     match app.bird_eye_client.token_meta_multiple(missing).await {

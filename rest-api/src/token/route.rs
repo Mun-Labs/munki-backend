@@ -9,7 +9,7 @@ use crate::token::{
 };
 use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::Utc;
 use serde::Serialize;
 
@@ -153,25 +153,17 @@ impl From<&TokenOverview> for TokenResponse {
             logo_uri: value.logo_uri.clone(),
             marketcap: value
                 .marketcap
-                .clone()
                 .unwrap_or_default()
                 .to_f64()
                 .unwrap_or_default(),
             price24hchange: value
                 .price_change24h_percent
-                .clone()
                 .unwrap_or_default()
                 .to_f64()
                 .unwrap_or_default(),
-            price: value
-                .price
-                .clone()
-                .unwrap_or_default()
-                .to_f64()
-                .unwrap_or_default(),
+            price: value.price.unwrap_or_default().to_f64().unwrap_or_default(),
             volume24h: value
                 .volume24h
-                .clone()
                 .unwrap_or_default()
                 .to_f64()
                 .unwrap_or_default(),
@@ -244,14 +236,14 @@ pub async fn search_token(
         return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
     }
 
-    let search_result = app
+    let mut search_result = app
         .bird_eye_client
         .search(&query.q)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     info!("inserting token {search_result:?}");
-    for token in search_result.iter() {
+    for token in search_result.iter_mut() {
         let TokenOverview {
             address,
             decimals,
@@ -266,12 +258,20 @@ pub async fn search_token(
             volume24h,
             ..
         } = token;
+        let mut logo_uri = logo_uri.clone();
+        if logo_uri.is_none() {
+            info!("token {address} missing logo {:?}", logo_uri);
+            if let Ok(a) = app.bird_eye_client.overview(address).await {
+                logo_uri = a.logo_uri.clone();
+                token.logo_uri = a.logo_uri;
+            }
+        }
         if let Err(e) = background_job::insert_token_with_params(
             &app.pool,
             address,
             name,
             symbol,
-            logo_uri.clone().unwrap_or_default().as_str(),
+            logo_uri.unwrap_or_default().as_str(),
             total_supply.unwrap_or_default(),
             marketcap.unwrap_or_default(),
             history24h_price.unwrap_or_default(),

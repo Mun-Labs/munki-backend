@@ -328,30 +328,31 @@ pub async fn insert_token(
     let token = sqlx::query_as::<_, TokenOverviewResponse>(
         "
     INSERT INTO
-    tokens (token_address, name, symbol, image_url, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url)
+    tokens (token_address, name, symbol, image_url, total_supply, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url, holders)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     ON CONFLICT (token_address) do UPDATE SET
     total_supply = EXCLUDED.total_supply,
-    marketcap = EXCLUDED.marketcap,
     price_change24h_percent = EXCLUDED.price_change24h_percent,
     history24h_price = EXCLUDED.history24h_price,
         decimals = EXCLUDED.decimals,
     current_price = EXCLUDED.current_price,
-    metadata = EXCLUDED.metadata
-     RETURNING token_address, name, symbol, image_url as logo_uri, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url",
+    metadata = EXCLUDED.metadata,
+    holders = EXCLUDED.holders
+    RETURNING token_address, name, symbol, image_url as logo_uri, total_supply, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url, marketcap",
     )
     .bind(&token.address)
     .bind(&token.name)
     .bind(&token.symbol)
     .bind(&token.logo_uri)
     .bind(token.total_supply)
-    .bind(token.marketcap)
     .bind(token.history24h_price)
     .bind(token.price_change24h_percent)
     .bind(token.price)
     .bind(token.decimals as i64)
     .bind(Json(&token.extensions))
     .bind(&token.website_url)
+    .bind(token.volume24h)
+    .bind(token.holder)
     .fetch_one(pool)
     .await?;
     Ok(token)

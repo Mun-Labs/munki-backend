@@ -30,7 +30,7 @@ impl From<TokenSearchItem> for TokenOverview {
             address: value.address,
             name: value.name,
             symbol: value.symbol,
-            logo_uri: Some(value.logo_uri),
+            logo_uri: value.logo_uri,
             marketcap: Some(value.market_cap),
             price: Some(value.price),
             volume24h: Some(value.volume_24h_usd),
@@ -71,7 +71,7 @@ pub struct TokenSearchItem {
     pub last_trade_unix_time: u64,
     pub creation_time: String,
     pub volume_24h_usd: f64,
-    pub logo_uri: String,
+    pub logo_uri: Option<String>,
     pub supply: f64,
     pub updated_time: i64,
 }

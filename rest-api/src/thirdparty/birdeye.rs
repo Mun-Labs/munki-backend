@@ -193,7 +193,6 @@ impl TokenSdk for BirdEyeClient {
                 ("search_by", "address"),
                 ("sort_by", "volume_24h_usd"),
                 ("sort_type", "desc"),
-                ("verify_token", "false"),
                 ("offset", "0"),
                 ("limit", "20"),
                 ("keyword", address),
