@@ -1,4 +1,6 @@
 use crate::price::{PriceSdk, TimeFilters};
+use crate::token::market::TradeData;
+use crate::token::trade::MarketData;
 use crate::token::{TokenHolder, TokenMetadata, TokenOverview, TokenSdk, Trending};
 use anyhow::Error;
 use chrono::{Duration, Timelike, Utc};
@@ -71,6 +73,7 @@ pub struct TrendingResponse {
     pub update_time: String,
     pub tokens: Vec<Trending>,
 }
+
 impl TokenSdk for BirdEyeClient {
     async fn get_trending(&self, offset: i32, limit: i32) -> Result<Vec<Trending>, anyhow::Error> {
         let url = format!("{}/defi/token_trending", self.base_url);
@@ -223,6 +226,52 @@ impl TokenSdk for BirdEyeClient {
                 a
             })
             .collect())
+    }
+
+    async fn trade_data(&self, address: &str) -> Result<TradeData, anyhow::Error> {
+        let url = format!("{}/defi/v3/token/trade-data/single", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("address", address)])
+            .header("X-API-KEY", &self.api_key)
+            .header("accept", "application/json")
+            .header("x-chain", "solana")
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "{url} Request failed with status: {}",
+                resp.status()
+            ));
+        }
+
+        let resp = resp.json::<BirdEyeResponse<TradeData>>().await?;
+        Ok(resp.data)
+    }
+
+    async fn market_data(&self, address: &str) -> Result<MarketData, anyhow::Error> {
+        let url = format!("{}/defi/v3/token/market-data", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("address", address)])
+            .header("X-API-KEY", &self.api_key)
+            .header("accept", "application/json")
+            .header("x-chain", "solana")
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "{url} Request failed with status: {}",
+                resp.status()
+            ));
+        }
+
+        let resp = resp.json::<BirdEyeResponse<MarketData>>().await?;
+        Ok(resp.data)
     }
 }
 

@@ -10,6 +10,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 
+use super::market::TradeData;
+use super::trade::MarketData;
+
 #[derive(Debug, sqlx::FromRow)]
 struct TokenRow {}
 
@@ -36,6 +39,30 @@ async fn process_token_watch(app: &Arc<AppState>) -> Result<()> {
         }) {
             info!("Token details: {:?}", token_data);
             insert_token(pool, &token_data).await?;
+
+            match fetch_trade_data(app, &token_address).await {
+                Ok(market_data) => {
+                    info!("trade data: {:?}", market_data);
+                    if let Err(e) = insert_trade_data(pool, &market_data).await {
+                        error!("Error inserting trade data for {token_address}: {e}");
+                    }
+                }
+                Err(e) => {
+                    error!("Error fetching trade data for {token_address}: {e}");
+                }
+            }
+
+            match fetch_market_data(app, &token_address).await {
+                Ok(market_data) => {
+                    info!("market data: {:?}", market_data);
+                    if let Err(e) = insert_market_data(pool, &market_data).await {
+                        error!("Error inserting market data for {token_address}: {e}");
+                    }
+                }
+                Err(e) => {
+                    error!("Error fetching market data for {token_address}: {e}");
+                }
+            };
 
             if let Ok(safety_score) = thirdparty::get_safe_score(&app.client, &token_address)
                 .await
@@ -124,6 +151,35 @@ async fn process_token_watch(app: &Arc<AppState>) -> Result<()> {
         info!("Token address {} is refreshed", token_address);
         sleep(Duration::from_millis(5000)).await;
     }
+    Ok(())
+}
+
+async fn insert_market_data(
+    pool: &Pool<Postgres>,
+    market_data: &MarketData,
+) -> std::result::Result<(), sqlx::Error> {
+    sqlx::query(r#"UPDATE tokens SET total_supply = $2, marketcap = $3 WHERE token_address = $1"#)
+        .bind(&market_data.address)
+        .bind(market_data.total_supply)
+        .bind(market_data.market_cap)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+async fn insert_trade_data(
+    pool: &Pool<Postgres>,
+    market_data: &TradeData,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"UPDATE tokens SET volume_24h = $2, volume_24h_change = $3 WHERE token_address = $1"#,
+    )
+    .bind(&market_data.address)
+    .bind(market_data.volume_24h)
+    .bind(market_data.volume_24h_change_percent)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 async fn mark_failed_munscore(
@@ -267,7 +323,17 @@ pub async fn renew_token_in_watch(pool: &Pool<Postgres>, token_address: &str) ->
 
 // Simulate fetching token details; replace with an actual implementation.
 pub async fn fetch_token_details(app: &AppState, token_address: &str) -> Result<TokenOverview> {
+    //fetch overview -> fetch market data -> fectch trade data
     app.bird_eye_client.overview(token_address).await
+}
+
+pub async fn fetch_trade_data(app: &AppState, token_address: &str) -> Result<TradeData> {
+    app.bird_eye_client.trade_data(token_address).await
+}
+
+pub async fn fetch_market_data(app: &AppState, token_address: &str) -> Result<MarketData> {
+    //fetch overview -> fetch market data -> fectch trade data
+    app.bird_eye_client.market_data(token_address).await
 }
 
 // Insert token data into the tokens table.
@@ -301,7 +367,7 @@ pub async fn insert_token_with_params(
     current_price = EXCLUDED.current_price,
     metadata = EXCLUDED.metadata,
     volume_24h = EXCLUDED.volume_24h
-     RETURNING token_address, name, symbol, image_url as logo_uri, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url",
+     RETURNING token_address, name, symbol, image_url as logo_uri, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url, volume_24h, volume_24h_change, holders, liquidity",
     )
     .bind(address)
     .bind(name)
@@ -340,7 +406,7 @@ pub async fn insert_token(
     marketcap = EXCLUDED.marketcap,
     liquidity = EXCLUDED.liquidity,
     holders = EXCLUDED.holders
-    RETURNING token_address, name, symbol, image_url as logo_uri, total_supply, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url, marketcap, liquidity, holders",
+    RETURNING token_address, name, symbol, image_url as logo_uri, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url, volume_24h, volume_24h_change, holders, liquidity",
     )
     .bind(&token.address)
     .bind(&token.name)

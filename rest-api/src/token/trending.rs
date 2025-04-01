@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres, QueryBuilder};
 use std::collections::HashMap;
 
+use super::{market::{self, TradeData}, trade::MarketData, TokenMindshare};
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Trending {
@@ -67,6 +69,7 @@ pub struct TokenHolder {
     pub ui_amount: f64,
 }
 
+#[allow(dead_code)]
 pub trait TokenSdk {
     async fn get_trending(&self, offset: i32, limit: i32) -> Result<Vec<Trending>, anyhow::Error>;
     async fn token_meta_multiple(
@@ -77,6 +80,8 @@ pub trait TokenSdk {
 
     async fn holders(&self, address: &str) -> Result<Vec<TokenHolder>, anyhow::Error>;
     async fn search(&self, address: &str) -> Result<Vec<TokenOverview>, anyhow::Error>;
+    async fn trade_data(&self, address: &str) -> Result<TradeData, anyhow::Error>;
+    async fn market_data(&self, address: &str) -> Result<MarketData, anyhow::Error>;
 }
 
 pub async fn upsert_token_meta(
@@ -249,6 +254,8 @@ pub struct TokenOverviewResponse {
     pub price_change24h_percent: Option<BigDecimal>,
     pub holders: Option<i32>,
     pub liquidity: Option<BigDecimal>,
+    pub volume_24h: Option<BigDecimal>,
+    pub volume_24h_change: Option<BigDecimal>,
 }
 
 pub async fn token_bio(
@@ -272,7 +279,9 @@ pub async fn token_bio(
             history24h_price,
             price_change24h_percent,
             holders,
-            liquidity
+            liquidity,
+            volume_24h,
+            volume_24h_change
         FROM tokens
         WHERE token_address = $1
         ",

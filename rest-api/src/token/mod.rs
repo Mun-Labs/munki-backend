@@ -5,6 +5,8 @@ mod trending;
 mod background_job;
 mod analytics;
 mod distributions;
+pub mod market;
+pub mod trade;
 
 pub use route::*;
 pub use trending::*;
