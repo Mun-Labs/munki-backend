@@ -18,13 +18,13 @@ pub struct MoverTransaction {
     #[serde(rename = "coinName")]
     pub token_name: Option<String>,
     pub token_symbol: Option<String>,
-    pub total_supply: BigDecimal,
+    pub total_supply: Option<BigDecimal>,
     // New fields from market_mover table
     #[serde(rename = "alphaGroup")]
     pub mover_role: String,
     #[serde(rename = "name")]
     pub mover_name: String,
-    pub decimals: i32,
+    pub decimals: Option<i32>,
     pub token_logo: Option<String>,
 }
 

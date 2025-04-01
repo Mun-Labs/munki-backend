@@ -133,9 +133,9 @@ pub async fn get_mover_transaction(
             mover_role: a.mover_role.clone(),
             mover_name: a.mover_name.clone(),
             token: token_metrics.get(&a.token_address).cloned(),
-            decimal: a.decimals,
+            decimal: a.decimals.unwrap_or_default(),
             token_logo: a.token_logo.clone(),
-            total_supply: a.total_supply.clone(),
+            total_supply: a.total_supply.clone().unwrap_or_default(),
         })
         .collect();
 
