@@ -65,7 +65,7 @@ pub async fn fetch_mover_transactions(
             m.name AS mover_name
          FROM market_movers_transaction mm
          INNER JOIN market_mover m ON mm.wallet_address = m.wallet_address
-         LEFT JOIN tokens t ON mm.token_address = t.token_address
+         INNER JOIN tokens t ON mm.token_address = t.token_address
          WHERE EXISTS(SELECT 1 FROM token_watch WHERE token_watch.token_address = mm.token_address)
          ORDER BY mm.slot DESC
          LIMIT $1 OFFSET $2",

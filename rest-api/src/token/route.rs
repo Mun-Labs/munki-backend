@@ -236,11 +236,10 @@ pub async fn search_token(
         return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
     }
 
-    let mut search_result = app
-        .bird_eye_client
-        .search(&query.q)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let mut search_result = app.bird_eye_client.search(&query.q).await.map_err(|e| {
+        error!("Failed to search tokens: {e}");
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
 
     info!("inserting token {search_result:?}");
     for token in search_result.iter_mut() {
@@ -333,19 +332,27 @@ pub async fn get_token_bio(
 ) -> Result<Json<HttpResponse<TokenOverviewResponse>>, (StatusCode, String)> {
     let missing = token_by_address(&app.pool, vec![address.clone()])
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| {
+            error!("Failed to fetch token by address: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
     let resp = if !missing.is_empty() {
-        let token = fetch_token_details(&app, &address)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let token = fetch_token_details(&app, &address).await.map_err(|e| {
+            error!("Failed to fetch token details: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
 
         background_job::insert_token(&app.pool, &token)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .map_err(|e| {
+                error!("Failed to insert token: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            })?
     } else {
-        token_bio(&app.pool, &address)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        token_bio(&app.pool, &address).await.map_err(|e| {
+            error!("Failed to fetch token bio: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?
     };
 
     Ok(Json(HttpResponse {
