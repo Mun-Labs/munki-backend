@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use tracing::{error, info};
 
 use crate::app::{AppState, SOL_ADDRESS};
-use crate::token;
+use crate::token::{self, last_active};
 use crate::token::TokenSdk;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -108,18 +108,18 @@ pub async fn webhook_handler(
                     continue;
                 }
 
-                let result = token_watch_exists(&app.pool, &transfer.mint).await;
-                match result {
-                    Ok(exists) if !exists => {
-                        info!("skipping due to not in token watch");
-                    }
-                    Ok(_) => {
-                        info!("token {} watch exists", &transfer.mint);
-                    }
-                    Err(e) => {
-                        error!("Failed to check token watch: {:?}", e);
-                    }
-                }
+                //let result = token_watch_exists(&app.pool, &transfer.mint).await;
+                //match result {
+                //    Ok(exists) if !exists => {
+                //        info!("skipping due to not in token watch");
+                //    }
+                //    Ok(_) => {
+                //        info!("token {} watch exists", &transfer.mint);
+                //    }
+                //    Err(e) => {
+                //        error!("Failed to check token watch: {:?}", e);
+                //    }
+                //}
 
                 // Adjust field extraction as needed.
                 token_addresses.push(transfer.mint.clone());
@@ -154,6 +154,9 @@ pub async fn webhook_handler(
     //         info!("no token to fetch");
     //     }
     //     Ok(missing) => {
+    if let Err(e) = last_active(&app.pool, token_addresses.as_slice()).await {
+        error!("Failed to update last active: {e}");
+    }
     if let Err(err) = batch_insert_tokens_into_watch(&app, token_addresses.as_slice()).await {
         error!("insert token watch failed: {:?}", err);
     }

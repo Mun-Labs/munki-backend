@@ -45,6 +45,14 @@ pub struct MoverTransactionResponse {
     pub mover_name: String,
     pub token: Option<TokenScoreResponse>,
     pub decimal: i32,
+
+    pub marketcap: Option<BigDecimal>,
+    pub history24h_price: Option<BigDecimal>,
+    pub price_change24h_percent: Option<BigDecimal>,
+    pub holders: Option<i32>,
+    pub liquidity: Option<BigDecimal>,
+    pub volume_24h: Option<BigDecimal>,
+    pub volume_24h_change: Option<BigDecimal>,
 }
 
 #[derive(Serialize, Clone)]
@@ -95,24 +103,6 @@ pub async fn get_mover_transaction(
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
 
-    let address = transactions
-        .iter()
-        .map(|a| a.token_address.clone())
-        .collect();
-    let token_metrics: HashMap<String, TokenScoreResponse> =
-        token_score::fetch_token_metrics_by_addresses(&app.pool, address)
-            .await
-            .map(|a| {
-                a.iter()
-                    .map(TokenScoreResponse::from)
-                    .map(|a| (a.token_address.clone(), a))
-                    .collect()
-            })
-            .map_err(|e| {
-                error!("Failed to fetch token metrics: {}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-            })?;
-
     // Execute query to count total rows in market_movers_transaction.
     let total = transaction::count_mover_transaction(&app)
         .await
@@ -132,10 +122,24 @@ pub async fn get_mover_transaction(
             token_symbol: a.token_symbol.clone(),
             mover_role: a.mover_role.clone(),
             mover_name: a.mover_name.clone(),
-            token: token_metrics.get(&a.token_address).cloned(),
+            token: Some(TokenScoreResponse {
+                token_address: a.token_address.clone(),
+                mun_score: a.mun_score.to_f64().unwrap_or_default(),
+                risk_score: a.risk_core.to_f64().unwrap_or_default(),
+                top_fresh_wallet_holders: a.top_fresh_wallet_holders,
+                top_smart_wallets_holders: a.top_smart_wallets_holders,
+                smart_followers: a.smart_followers,
+            }),
             decimal: a.decimals.unwrap_or_default(),
             token_logo: a.token_logo.clone(),
             total_supply: a.total_supply.clone().unwrap_or_default(),
+            marketcap: a.marketcap.clone(),
+            history24h_price: a.history24h_price.clone(),
+            price_change24h_percent: a.price_change24h_percent.clone(),
+            holders: a.holders,
+            liquidity: a.liquidity.clone(),
+            volume_24h: a.volume_24h.clone(),
+            volume_24h_change: a.volume_24h_change.clone(),
         })
         .collect();
 

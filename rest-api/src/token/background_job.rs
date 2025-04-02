@@ -297,10 +297,7 @@ async fn query_in_mover(
 /// Fetch tokens from the token_watch table whose updated_at timestamp is older than 60 seconds.
 pub async fn get_token_watch_due(pool: &Pool<Postgres>, batch_size: i64) -> Result<Vec<String>> {
     let addresses = sqlx::query_scalar(
-        "SELECT token_address FROM token_watch
-         WHERE updated_at <= NOW() - INTERVAL '3600 seconds'
-         LIMIT $1",
-    )
+        "SELECT token_address FROM token_watch WHERE updated_at <= NOW() - INTERVAL '3600 seconds' and last_active >= NOW() - INTERVAL '1 hour' LIMIT $1",)
     .bind(batch_size)
     .fetch_all(pool)
     .await?;

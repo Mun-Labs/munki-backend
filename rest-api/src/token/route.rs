@@ -4,8 +4,8 @@ use crate::response::HttpResponse;
 use crate::time_util;
 use crate::token::{
     background_job, create_dummy_token_analysis, create_dummy_token_distribution,
-    fetch_token_details, token_bio, token_by_address, TokenAnalytics, TokenDistributions,
-    TokenOverviewResponse, TokenSdk, TokenVolumeHistory,
+    fetch_token_details, last_active, token_bio, token_by_address, TokenAnalytics,
+    TokenDistributions, TokenOverviewResponse, TokenSdk, TokenVolumeHistory,
 };
 use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
@@ -236,10 +236,34 @@ pub async fn search_token(
         return Err((StatusCode::BAD_REQUEST, validation_errors.to_string()));
     }
 
+    let a = search_tokens(&app.pool, &query.q, query.limit, query.offset)
+        .await
+        .map_err(|e| {
+            error!("Failed to search tokens: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+    if !a.is_empty() {
+        let tokens = a.iter().map(TokenResponse::from).collect();
+
+        if let Err(e) = last_active(&app.pool, &[query.q]).await {
+            error!("Failed to update last active: {e}");
+        }
+
+        return Ok(Json(HttpResponse {
+            code: 200,
+            response: tokens,
+            last_updated: Utc::now().timestamp(),
+        }));
+    }
+
     let mut search_result = app.bird_eye_client.search(&query.q).await.map_err(|e| {
         error!("Failed to search tokens: {e}");
         (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
+
+    if let Err(e) = last_active(&app.pool, &[query.q]).await {
+        error!("Failed to update last active: {e}");
+    }
 
     info!("inserting token {search_result:?}");
     for token in search_result.iter_mut() {
