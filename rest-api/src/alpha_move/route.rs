@@ -1,5 +1,5 @@
 use crate::alpha_move::token_score::TokenMetric;
-use crate::alpha_move::{token_score, transaction};
+use crate::alpha_move::transaction;
 use crate::app::AppState;
 use crate::response::HttpPaginationResponse;
 use axum::extract::{Query, State};
@@ -8,7 +8,6 @@ use axum::Json;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tracing::error;
 use validator::Validate;
 
@@ -45,14 +44,6 @@ pub struct MoverTransactionResponse {
     pub mover_name: String,
     pub token: Option<TokenScoreResponse>,
     pub decimal: i32,
-
-    pub marketcap: Option<BigDecimal>,
-    pub history24h_price: Option<BigDecimal>,
-    pub price_change24h_percent: Option<BigDecimal>,
-    pub holders: Option<i32>,
-    pub liquidity: Option<BigDecimal>,
-    pub volume_24h: Option<BigDecimal>,
-    pub volume_24h_change: Option<BigDecimal>,
 }
 
 #[derive(Serialize, Clone)]
@@ -64,30 +55,37 @@ pub struct TokenScoreResponse {
     pub top_fresh_wallet_holders: i64,
     pub top_smart_wallets_holders: i64,
     pub smart_followers: i64,
+    pub marketcap: Option<BigDecimal>,
+    pub history24h_price: Option<BigDecimal>,
+    pub price_change24h_percent: Option<BigDecimal>,
+    pub holders: Option<i32>,
+    pub liquidity: Option<BigDecimal>,
+    pub volume_24h: Option<BigDecimal>,
+    pub volume_24h_change: Option<BigDecimal>,
 }
 
-impl From<&TokenMetric> for TokenScoreResponse {
-    fn from(
-        TokenMetric {
-            token_address,
-            mun_score,
-            top_fresh_wallet_holders,
-            top_smart_wallets_holders,
-            smart_followers,
-            risk_core,
-            ..
-        }: &TokenMetric,
-    ) -> Self {
-        Self {
-            token_address: token_address.clone(),
-            mun_score: mun_score.to_f64().unwrap_or_default(),
-            risk_score: risk_core.to_f64().unwrap_or_default(),
-            top_fresh_wallet_holders: *top_fresh_wallet_holders,
-            top_smart_wallets_holders: *top_smart_wallets_holders,
-            smart_followers: *smart_followers,
-        }
-    }
-}
+//impl From<&TokenMetric> for TokenScoreResponse {
+//    fn from(
+//        TokenMetric {
+//            token_address,
+//            mun_score,
+//            top_fresh_wallet_holders,
+//            top_smart_wallets_holders,
+//            smart_followers,
+//            risk_core,
+//            ..
+//        }: &TokenMetric,
+//    ) -> Self {
+//        Self {
+//            token_address: token_address.clone(),
+//            mun_score: mun_score.to_f64().unwrap_or_default(),
+//            risk_score: risk_core.to_f64().unwrap_or_default(),
+//            top_fresh_wallet_holders: *top_fresh_wallet_holders,
+//            top_smart_wallets_holders: *top_smart_wallets_holders,
+//            smart_followers: *smart_followers,
+//        }
+//    }
+//}
 pub async fn get_mover_transaction(
     State(app): State<AppState>,
     Query(query): Query<PaginationQuery>,
@@ -129,17 +127,17 @@ pub async fn get_mover_transaction(
                 top_fresh_wallet_holders: a.top_fresh_wallet_holders,
                 top_smart_wallets_holders: a.top_smart_wallets_holders,
                 smart_followers: a.smart_followers,
+                marketcap: a.marketcap.clone(),
+                history24h_price: a.history24h_price.clone(),
+                price_change24h_percent: a.price_change24h_percent.clone(),
+                holders: a.holders,
+                liquidity: a.liquidity.clone(),
+                volume_24h: a.volume_24h.clone(),
+                volume_24h_change: a.volume_24h_change.clone(),
             }),
             decimal: a.decimals.unwrap_or_default(),
             token_logo: a.token_logo.clone(),
             total_supply: a.total_supply.clone().unwrap_or_default(),
-            marketcap: a.marketcap.clone(),
-            history24h_price: a.history24h_price.clone(),
-            price_change24h_percent: a.price_change24h_percent.clone(),
-            holders: a.holders,
-            liquidity: a.liquidity.clone(),
-            volume_24h: a.volume_24h.clone(),
-            volume_24h_change: a.volume_24h_change.clone(),
         })
         .collect();
 
