@@ -182,6 +182,7 @@ pub struct TrendingTokenResponse {
     pub name: String,
     pub holder_count: i32,
     pub volume24h_percent: Option<BigDecimal>,
+    pub price24h_percent: Option<BigDecimal>,
 }
 
 impl From<&TokenVolumeHistory> for TrendingTokenResponse {
@@ -194,6 +195,7 @@ impl From<&TokenVolumeHistory> for TrendingTokenResponse {
             symbol,
             logo_uri,
             volume24h_percent,
+            price24h_percent,
         }: &TokenVolumeHistory,
     ) -> Self {
         Self {
@@ -205,6 +207,7 @@ impl From<&TokenVolumeHistory> for TrendingTokenResponse {
             logo_uri: logo_uri.clone(),
             holder_count: 0,
             volume24h_percent: volume24h_percent.clone(),
+            price24h_percent: price24h_percent.clone(),
         }
     }
 }
