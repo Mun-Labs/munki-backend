@@ -9,7 +9,7 @@ use crate::token::{
 };
 use axum::extract::{Path, Query, State};
 use axum::{http::StatusCode, Json};
-use bigdecimal::{BigDecimal, ToPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use chrono::Utc;
 use serde::Serialize;
 
@@ -362,16 +362,16 @@ pub struct TokenDetailResponse {
     pub website_url: String,
     pub metadata: serde_json::Value,
     pub decimals: i32,
-    pub marketcap: f64,
-    pub history24h_price: f64,
-    pub price_change24h_percent: f64,
+    pub marketcap: BigDecimal,
+    pub history24h_price: BigDecimal,
+    pub price_change24h_percent: BigDecimal,
     pub holders: i32,
-    pub liquidity: f64,
-    pub volume_24h: f64,
-    pub volume_24h_change: f64,
+    pub liquidity: BigDecimal,
+    pub volume_24h: BigDecimal,
+    pub volume_24h_change: BigDecimal,
     pub mun_score: f64,
-    pub total_supply: f64,
-    pub current_price: f64,
+    pub total_supply: BigDecimal,
+    pub current_price: BigDecimal,
     pub risk_score: f64,
 }
 
@@ -383,18 +383,18 @@ impl From<TokenOverviewResponse> for TokenDetailResponse {
                 symbol: value.symbol,
                 logo_uri: value.logo_uri.unwrap_or_default(),
                 website_url: value.website_url.unwrap_or_default(),
-                metadata: value.metadata.unwrap(),
+                metadata: value.metadata.unwrap_or_default(),
                 decimals: value.decimals.unwrap(),
-                marketcap: value.marketcap.unwrap().to_f64().unwrap(),
-                history24h_price: value.history24h_price.unwrap().to_f64().unwrap(),
-                price_change24h_percent: value.price_change24h_percent.unwrap().to_f64().unwrap(),
+                marketcap: value.marketcap.unwrap(),
+                history24h_price: value.history24h_price.unwrap_or_default(),
+                price_change24h_percent: value.price_change24h_percent.unwrap_or_default(),
                 holders: value.holders.unwrap_or(0),
-                liquidity: value.liquidity.unwrap().to_f64().unwrap(),
-                volume_24h: value.volume_24h.unwrap().to_f64().unwrap(),
-                volume_24h_change: value.volume_24h_change.unwrap().to_f64().unwrap(),
+                liquidity: value.liquidity.unwrap_or_default(),
+                volume_24h: value.volume_24h.unwrap_or_default(),
+                volume_24h_change: value.volume_24h_change.unwrap_or_default(),
                 mun_score: value.mun_score.unwrap().to_f64().unwrap(),
-                total_supply: value.total_supply.unwrap().to_f64().unwrap(),
-                current_price: value.current_price.unwrap().to_f64().unwrap(),
+                total_supply: value.total_supply.unwrap(),
+                current_price: value.current_price.unwrap(),
                 risk_score: value.risk_score.unwrap().to_f64().unwrap(),
             }
         }
@@ -431,16 +431,16 @@ pub async fn get_token_bio(
                     website_url: token.website_url.unwrap_or_default().to_string(),
                     metadata: serde_json::to_value(token.extensions.unwrap_or_default()).unwrap_or_default(),
                     decimals: token.decimals.to_i32().unwrap(),
-                    marketcap: token.marketcap.unwrap_or(0.0),
-                    history24h_price: token.history24h_price.unwrap_or_default(),
-                    price_change24h_percent: token.price_change24h_percent.unwrap_or_default(),
+                    marketcap: BigDecimal::from_f64(token.marketcap.unwrap()).unwrap(),
+                    history24h_price: BigDecimal::from_f64(token.history24h_price.unwrap_or_default()).unwrap(),
+                    price_change24h_percent: BigDecimal::from_f64(token.price_change24h_percent.unwrap_or_default()).unwrap(),
                     holders: token.holder.unwrap_or_default(),
-                    liquidity: token.liquidity.unwrap_or_default(),
-                    volume_24h: token.volume24h.unwrap_or_default(),
-                    volume_24h_change: token.volume_24h_change.unwrap_or_default(),
+                    liquidity: BigDecimal::from_f64(token.liquidity.unwrap_or_default()).unwrap(),
+                    volume_24h: BigDecimal::from_f64(token.volume24h.unwrap_or_default()).unwrap(),
+                    volume_24h_change: BigDecimal::from_f64(token.volume_24h_change.unwrap_or_default()).unwrap(),
                     mun_score: 0.0,
-                    total_supply: token.total_supply.unwrap_or_default(),
-                    current_price: token.price.unwrap(),
+                    total_supply: BigDecimal::from_f64(token.total_supply.unwrap_or_default()).unwrap(),
+                    current_price: BigDecimal::from_f64(token.price.unwrap()).unwrap(),
                     risk_score: 0.0,
                 }
             })?
