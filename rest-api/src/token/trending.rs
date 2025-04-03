@@ -1,4 +1,4 @@
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, Zero};
 use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres, QueryBuilder};
 use std::collections::HashMap;
@@ -260,6 +260,8 @@ pub struct TokenOverviewResponse {
     pub liquidity: Option<BigDecimal>,
     pub volume_24h: Option<BigDecimal>,
     pub volume_24h_change: Option<BigDecimal>,
+    pub mun_score: Option<BigDecimal>,
+    pub risk_score: Option<BigDecimal>,
 }
 
 pub async fn token_bio(
@@ -269,25 +271,28 @@ pub async fn token_bio(
     let token = sqlx::query_as::<_, TokenOverviewResponse>(
         "
         SELECT
-            token_address,
-            name,
-            symbol,
-            decimals,
-            description,
-            image_url as logo_uri,
-            website_url,
-            metadata,
-            current_price,
-            total_supply,
-            marketcap,
-            history24h_price,
-            price_change24h_percent,
-            holders,
-            liquidity,
-            volume_24h,
-            volume_24h_change
-        FROM tokens
-        WHERE token_address = $1
+            t.token_address,
+            t.name,
+            t.symbol,
+            t.decimals,
+            t.description,
+            t.image_url as logo_uri,
+            t.website_url,
+            t.metadata,
+            t.current_price,
+            t.total_supply,
+            t.marketcap,
+            t.history24h_price,
+            t.price_change24h_percent,
+            t.holders,
+            t.liquidity,
+            t.volume_24h,
+            t.volume_24h_change,
+            COALESCE(a.mun_score, 0) as mun_score,
+            COALESCE(a.risk_score, 0) as risk_score
+        FROM tokens t
+        LEFT JOIN alpha_move_token_metric a ON a.token_address = t.token_address
+        WHERE t.token_address = $1
         ",
     )
     .bind(address)
