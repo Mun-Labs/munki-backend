@@ -260,26 +260,8 @@ pub struct TokenOverviewResponse {
     pub liquidity: Option<BigDecimal>,
     pub volume_24h: Option<BigDecimal>,
     pub volume_24h_change: Option<BigDecimal>,
-    #[serde(serialize_with = "serialize_zero_if_none")]
-    #[sqlx(default)]
     pub mun_score: Option<BigDecimal>,
-    #[serde(serialize_with = "serialize_zero_if_none")]
-    #[sqlx(default)]
     pub risk_score: Option<BigDecimal>,
-}
-
-// Helper function to serialize as "0" if None
-fn serialize_zero_if_none<S>(
-    value: &Option<BigDecimal>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    match value {
-        Some(v) => v.serialize(serializer),
-        None => BigDecimal::zero().serialize(serializer),
-    }
 }
 
 pub async fn token_bio(
