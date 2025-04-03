@@ -34,6 +34,7 @@ impl From<TokenSearchItem> for TokenOverview {
             marketcap: value.market_cap,
             price: value.price,
             volume24h: value.volume_24h_usd,
+            volume_24h_change: value.volume_24h_change_percent,
             price_change24h_percent: value.price_change_24h_percent,
             decimals: value.decimals.unwrap_or_default(),
             extensions: None,

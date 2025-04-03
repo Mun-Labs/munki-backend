@@ -57,6 +57,8 @@ pub struct TokenOverview {
     #[serde(rename = "websiteURL")]
     pub website_url: Option<String>,
     pub volume24h: Option<f64>,
+    #[serde(rename = "volume24hChange")]
+    pub volume_24h_change: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
