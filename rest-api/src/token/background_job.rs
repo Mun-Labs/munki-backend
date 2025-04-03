@@ -349,8 +349,8 @@ pub async fn insert_token_with_params(
     extensions: Option<serde_json::Value>,
     website_url: &str,
     volume_24h: f64,
-) -> Result<TokenOverviewResponse> {
-    let token = sqlx::query_as::<_, TokenOverviewResponse>(
+) -> Result<()> {
+    sqlx::query(
         "
     INSERT INTO
     tokens (token_address, name, symbol, image_url, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url, volume_24h)
@@ -363,8 +363,7 @@ pub async fn insert_token_with_params(
         decimals = EXCLUDED.decimals,
     current_price = EXCLUDED.current_price,
     metadata = EXCLUDED.metadata,
-    volume_24h = EXCLUDED.volume_24h
-     RETURNING token_address, name, symbol, image_url as logo_uri, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url, volume_24h, volume_24h_change, holders, liquidity",
+    volume_24h = EXCLUDED.volume_24h",
     )
     .bind(address)
     .bind(name)
@@ -379,16 +378,16 @@ pub async fn insert_token_with_params(
     .bind(Json(extensions))
     .bind(website_url)
     .bind(volume_24h)
-    .fetch_one(pool)
+    .execute(pool)
     .await?;
-    Ok(token)
+    Ok(())
 }
 // Insert token data into the tokens table.
 pub async fn insert_token(
     pool: &Pool<Postgres>,
     token: &TokenOverview,
-) -> Result<TokenOverviewResponse> {
-    let token = sqlx::query_as::<_, TokenOverviewResponse>(
+) -> Result<()> {
+    sqlx::query(
         "
     INSERT INTO
     tokens (token_address, name, symbol, image_url, total_supply, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url, holders, marketcap, liquidity)
@@ -402,8 +401,7 @@ pub async fn insert_token(
     metadata = EXCLUDED.metadata,
     marketcap = EXCLUDED.marketcap,
     liquidity = EXCLUDED.liquidity,
-    holders = EXCLUDED.holders
-    RETURNING token_address, name, symbol, image_url as logo_uri, total_supply, marketcap, history24h_price, price_change24h_percent, current_price, decimals, metadata, website_url, volume_24h, volume_24h_change, holders, liquidity",
+    holders = EXCLUDED.holders",
     )
     .bind(&token.address)
     .bind(&token.name)
@@ -419,9 +417,9 @@ pub async fn insert_token(
     .bind(token.holder)
     .bind(token.marketcap)
     .bind(token.liquidity)
-    .fetch_one(pool)
+    .execute(pool)
     .await?;
-    Ok(token)
+    Ok(())
 }
 
 async fn upsert_safe_score(

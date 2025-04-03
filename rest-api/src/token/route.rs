@@ -363,7 +363,7 @@ pub async fn get_token_bio(
             error!("Failed to fetch token by address: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
-    let resp = if !missing.is_empty() {
+    if !missing.is_empty() {
         let token = fetch_token_details(&app, &address).await.map_err(|e| {
             error!("Failed to fetch token details: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
@@ -374,13 +374,12 @@ pub async fn get_token_bio(
             .map_err(|e| {
                 error!("Failed to insert token: {}", e);
                 (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-            })?
-    } else {
-        token_bio(&app.pool, &address).await.map_err(|e| {
-            error!("Failed to fetch token bio: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        })?
-    };
+            })?;
+    }
+    let resp = token_bio(&app.pool, &address).await.map_err(|e| {
+        error!("Failed to fetch token bio: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
 
     Ok(Json(HttpResponse {
         code: 200,
