@@ -89,7 +89,7 @@ pub async fn upsert_token_meta(
     trending_list: &Vec<Trending>,
 ) -> Result<(), sqlx::Error> {
     let mut qb = QueryBuilder::new(
-        "INSERT INTO tokens (token_address, name, symbol, decimals, image_url, current_price, updated_at, marketcap, volume_24h, volume_24h_change) ",
+        "INSERT INTO tokens (token_address, name, symbol, decimals, image_url, current_price, updated_at, marketcap, volume_24h, volume_24h_change, price_change24h_percent) ",
     );
 
     qb.push_values(trending_list.iter(), |mut b, item| {
@@ -102,7 +102,8 @@ pub async fn upsert_token_meta(
             .push("NOW()")
             .push(item.marketcap)
             .push_bind(item.volume24h_usd)
-            .push_bind(item.volum24h_change_percent);
+            .push_bind(item.volum24h_change_percent)
+            .push_bind(item.price24h_change_percent);
     });
 
     qb.push(
@@ -156,6 +157,8 @@ pub struct TokenVolumeHistory {
     pub logo_uri: Option<String>,
     #[sqlx(default)]
     pub volume24h_percent: Option<BigDecimal>,
+    #[sqlx(default)]
+    pub price24h_percent: Option<BigDecimal>,
 }
 
 pub async fn query_top_token_volume_history_by_date(
@@ -171,7 +174,8 @@ pub async fn query_top_token_volume_history_by_date(
         t.image_url AS logo_uri,
         t.name as name,
         t.symbol as symbol,
-        t.volume_24h_change as volume24h_percent
+        t.volume_24h_change as volume24h_percent,
+        t.price_change24h_percent as price24h_percent
         FROM token_volume_history tvh
         INNER JOIN tokens t ON t.token_address = tvh.token_address
         LEFT JOIN token_metrics tm ON tm.token_address = tvh.token_address
